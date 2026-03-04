@@ -1,0 +1,22 @@
+{
+    "name": "UP Gestion",
+    "short_name": "UpGestion",
+    "description": "Votre application fiable de suivi à distance",
+    "start_url": "/WebApp/public/login",
+    "display": "standalone",
+    "background_color": "#F7F8FA",
+    "theme_color": "#0E9F68",
+    "icons": [
+      {
+        "src": "/WebApp/public/iconapp-192x192.png",
+        "type": "image/png",
+        "sizes": "192x192"
+      },
+      {
+        "src": "/WebApp/public/iconapp-512x512.png",
+        "type": "image/png",
+        "sizes": "512x512"
+      }
+    ]
+  }
+  
