@@ -11,8 +11,8 @@ android {
         applicationId = "com.lcaissier.pos"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
 
         buildConfigField("String", "POS_URL", "\"http://192.168.137.129:8000/caisse\"")
     }
