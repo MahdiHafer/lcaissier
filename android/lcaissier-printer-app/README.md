@@ -10,10 +10,14 @@ Application Android dediee pour tablette/telephone afin de:
 Par defaut, l'app charge:
 - `http://192.168.137.129:8000/caisse`
 
-Si ton IP change, modifie `POS_URL` dans:
-- `android/lcaissier-printer-app/app/build.gradle.kts`
+Si ton IP change, tu peux la modifier directement dans l'app:
+- Ouvre l'app
+- Appuie sur l'icone `parametres` en haut a droite
+- Saisis la nouvelle URL (ex: `http://192.168.1.15:8000/caisse`)
+- Enregistrer
 
-Puis rebuild l'APK.
+Option de secours:
+- Bouton `Defaut` dans le popup pour revenir a l'URL compilee dans `BuildConfig.POS_URL`.
 
 ## 2) Build APK (Android Studio)
 
