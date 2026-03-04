@@ -52,3 +52,32 @@ Ensuite l'impression part directement sans popup de selection.
 - Cote web, la caisse appelle automatiquement `AndroidPrinter.printEscPos(base64)` si disponible.
 - Si l'app Android n'est pas utilisee, la caisse garde le fallback impression navigateur.
 - Impression attendue en mode ESC/POS compatible 80mm.
+
+## APK release signee (production)
+
+Un workflow GitHub est disponible:
+- `.github/workflows/android-release.yml`
+- Action: `Build Signed Android Release APK`
+
+Secrets GitHub a ajouter (Settings > Secrets and variables > Actions):
+- `ANDROID_KEYSTORE_BASE64`
+- `ANDROID_KEYSTORE_PASSWORD`
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
+
+Generation keystore (une seule fois, en local):
+
+```powershell
+keytool -genkeypair -v -keystore lcaissier-release.jks -alias lcaissier -keyalg RSA -keysize 2048 -validity 10000
+```
+
+Encoder le fichier en base64 pour le secret:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("lcaissier-release.jks")) | Set-Content keystore.base64.txt
+```
+
+Ensuite:
+1. Copier le contenu de `keystore.base64.txt` dans le secret `ANDROID_KEYSTORE_BASE64`.
+2. Lancer l'action `Build Signed Android Release APK`.
+3. Telecharger l'artifact `lcaissier-pos-release-apk` (fichier `app-release.apk`).

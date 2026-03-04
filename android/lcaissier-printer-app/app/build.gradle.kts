@@ -6,6 +6,10 @@
 android {
     namespace = "com.lcaissier.pos"
     compileSdk = 34
+    val keystorePath = System.getenv("ANDROID_KEYSTORE_FILE")
+    val keystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+    val envKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
+    val envKeyPassword = System.getenv("ANDROID_KEY_PASSWORD")
 
     defaultConfig {
         applicationId = "com.lcaissier.pos"
@@ -17,6 +21,22 @@ android {
         buildConfigField("String", "POS_URL", "\"http://192.168.137.129:8000/caisse\"")
     }
 
+    signingConfigs {
+        if (
+            !keystorePath.isNullOrBlank() &&
+            !keystorePassword.isNullOrBlank() &&
+            !envKeyAlias.isNullOrBlank() &&
+            !envKeyPassword.isNullOrBlank()
+        ) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = keystorePassword
+                keyAlias = envKeyAlias
+                keyPassword = envKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -24,6 +44,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (signingConfigs.findByName("release") != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
