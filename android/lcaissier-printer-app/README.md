@@ -81,3 +81,20 @@ Ensuite:
 1. Copier le contenu de `keystore.base64.txt` dans le secret `ANDROID_KEYSTORE_BASE64`.
 2. Lancer l'action `Build Signed Android Release APK`.
 3. Telecharger l'artifact `lcaissier-pos-release-apk` (fichier `app-release.apk`).
+
+## Alternative sans installer Java/JDK en local
+
+Un workflow autonome existe:
+- `.github/workflows/android-release-auto-keystore.yml`
+- Action: `Build Release APK (Auto Keystore)`
+
+Ce workflow:
+1. Genere un keystore automatiquement sur GitHub.
+2. Compile une APK release signee.
+3. Publie 2 artifacts:
+   - `lcaissier-pos-release-apk-auto` (APK)
+   - `lcaissier-keystore-auto` (keystore)
+
+Important:
+- Conserve absolument le fichier keystore (`lcaissier-keystore-auto`) en lieu sur.
+- Le meme keystore est necessaire pour publier les futures mises a jour de l'application.
