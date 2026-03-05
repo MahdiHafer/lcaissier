@@ -562,7 +562,11 @@ const closeVariantModal = document.getElementById('closeVariantModal');
 
 let cartState = @json(session('panier', []));
 let pendingVariantPayload = null;
-const companyName = @json(config('app.name'));
+const companyName = @json($companySettings['name'] ?? config('app.name'));
+const companyAddress = @json($companySettings['address'] ?? null);
+const companyPhone = @json($companySettings['phone'] ?? null);
+const companyEmail = @json($companySettings['email'] ?? null);
+const companyIce = @json($companySettings['ice'] ?? null);
 
 scanner.focus();
 
@@ -908,7 +912,12 @@ function buildReceiptText() {
     const total = Number(totals.total || 0);
     const net = Number(payload.net_a_payer || total);
 
-    lines.push(sanitizeText(companyName || "L'CAISSIER"));
+    lines.push(sanitizeText(companyName || 'Societe'));
+    if (companyAddress) lines.push(sanitizeText(companyAddress));
+    if (companyPhone || companyEmail) {
+        lines.push(sanitizeText(`${companyPhone || '-'}${companyEmail ? ` | ${companyEmail}` : ''}`));
+    }
+    if (companyIce) lines.push(`ICE: ${sanitizeText(companyIce)}`);
     lines.push(now.toLocaleString('fr-FR'));
     lines.push('-'.repeat(42));
 
@@ -1042,15 +1051,27 @@ async function printDirectThermal() {
         return;
     }
     try {
-        if (window.AndroidPrinter && typeof window.AndroidPrinter.printEscPos === 'function') {
+        if (window.AndroidPrinter) {
             const bytes = buildEscPosPayload();
-            const printed = window.AndroidPrinter.printEscPos(toBase64(bytes));
-            if (printed) {
-                showToast('Ticket envoye a l imprimante');
-            } else {
-                showToast('Imprimante non connectee');
+            const payloadB64 = toBase64(bytes);
+
+            if (typeof window.AndroidPrinter.printEscPosStatus === 'function') {
+                const status = String(window.AndroidPrinter.printEscPosStatus(payloadB64) || '');
+                if (status.startsWith('OK|')) {
+                    showToast(status.slice(3) || 'Ticket envoye');
+                } else if (status.startsWith('ERR|')) {
+                    showToast(status.slice(4) || 'Erreur impression');
+                } else {
+                    showToast(status || 'Erreur impression');
+                }
+                return;
             }
-            return;
+
+            if (typeof window.AndroidPrinter.printEscPos === 'function') {
+                const printed = window.AndroidPrinter.printEscPos(payloadB64);
+                showToast(printed ? 'Ticket envoye a l imprimante' : 'Imprimante non connectee');
+                return;
+            }
         }
     } catch (e) {
         showToast('Erreur impression Android');
@@ -1083,3 +1104,4 @@ document.addEventListener('fullscreenchange', () => {
 renderCart();
 </script>
 @endsection
+

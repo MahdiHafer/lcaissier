@@ -1,21 +1,20 @@
-﻿package com.lcaissier.pos
+package com.lcaissier.pos
 
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.hardware.usb.UsbConstants
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Base64
+import android.webkit.JavascriptInterface
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
-import android.webkit.JavascriptInterface
 import android.webkit.WebSettings
-import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.EditText
@@ -50,13 +49,14 @@ class MainActivity : AppCompatActivity() {
 
             val data = pendingBytes ?: return
             pendingBytes = null
-            val device = printer.findPrinterDevice() ?: run {
+            val device = printer.findPrinterDevice()
+            if (device == null) {
                 toast("Imprimante introuvable")
                 return
             }
 
-            val ok = printer.print(device, data)
-            toast(if (ok) "Impression envoyee" else "Erreur impression")
+            val result = printer.printDetailed(device, data)
+            toast(result.message)
         }
     }
 
@@ -65,7 +65,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
-        printer = UsbEscPosPrinter(this, usbManager)
+        printer = UsbEscPosPrinter(usbManager)
 
         @Suppress("DEPRECATION")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -116,16 +116,18 @@ class MainActivity : AppCompatActivity() {
         usbManager.requestPermission(device, pi)
     }
 
-    private fun printEscPos(bytes: ByteArray): Boolean {
-        val device = printer.findPrinterDevice() ?: return false
+    private fun printEscPos(bytes: ByteArray): PrintAttempt {
+        val device = printer.findPrinterDevice()
+            ?: return PrintAttempt(false, "Aucune imprimante USB detectee. ${printer.describeDevices()}")
 
         if (!usbManager.hasPermission(device)) {
             pendingBytes = bytes
             requestUsbPermission(device)
-            return true
+            return PrintAttempt(true, "Permission USB demandee. Autorisez puis relancez l'impression.")
         }
 
-        return printer.print(device, bytes)
+        val result = printer.printDetailed(device, bytes)
+        return PrintAttempt(result.success, result.message)
     }
 
     private fun toast(message: String) {
@@ -205,17 +207,27 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    data class PrintAttempt(
+        val accepted: Boolean,
+        val message: String
+    )
+
     inner class AndroidPrinterBridge {
         @JavascriptInterface
         fun printEscPos(base64: String): Boolean {
+            val status = printEscPosStatus(base64)
+            return status.startsWith("OK|")
+        }
+
+        @JavascriptInterface
+        fun printEscPosStatus(base64: String): String {
             return try {
                 val bytes = Base64.decode(base64, Base64.DEFAULT)
-                val ok = printEscPos(bytes)
-                if (!ok) toast("Imprimante non connectee")
-                ok
+                val attempt = printEscPos(bytes)
+                val prefix = if (attempt.accepted) "OK" else "ERR"
+                "$prefix|${attempt.message}"
             } catch (e: Exception) {
-                toast("Erreur impression: ${e.message}")
-                false
+                "ERR|Erreur impression: ${e.message ?: "inconnue"}"
             }
         }
     }

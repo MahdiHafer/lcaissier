@@ -1,17 +1,18 @@
-﻿package com.lcaissier.pos
+package com.lcaissier.pos
 
-import android.content.Context
 import android.hardware.usb.UsbConstants
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbEndpoint
 import android.hardware.usb.UsbInterface
 import android.hardware.usb.UsbManager
-import android.hardware.usb.UsbRequest
 
 class UsbEscPosPrinter(
-    private val context: Context,
     private val usbManager: UsbManager
 ) {
+    data class PrintResult(
+        val success: Boolean,
+        val message: String
+    )
 
     fun findPrinterDevice(): UsbDevice? {
         val devices = usbManager.deviceList.values.toList()
@@ -28,13 +29,33 @@ class UsbEscPosPrinter(
         return devices.firstOrNull { hasBulkOutEndpoint(it) }
     }
 
-    fun print(device: UsbDevice, payload: ByteArray): Boolean {
-        val conn = usbManager.openDevice(device) ?: return false
-        try {
-            val usbInterface = chooseInterface(device) ?: return false
-            if (!conn.claimInterface(usbInterface, true)) return false
+    fun describeDevices(): String {
+        val devices = usbManager.deviceList.values.toList()
+        if (devices.isEmpty()) return "Aucun appareil USB detecte via OTG."
 
-            val out = findBulkOut(usbInterface) ?: return false
+        return devices.joinToString(" ; ") { device ->
+            val name = (device.productName ?: device.deviceName ?: "USB").trim()
+            val hasOut = hasBulkOutEndpoint(device)
+            "$name (VID:${device.vendorId}, PID:${device.productId}, bulkOut:${if (hasOut) "oui" else "non"})"
+        }
+    }
+
+    fun print(device: UsbDevice, payload: ByteArray): Boolean {
+        return printDetailed(device, payload).success
+    }
+
+    fun printDetailed(device: UsbDevice, payload: ByteArray): PrintResult {
+        val conn = usbManager.openDevice(device)
+            ?: return PrintResult(false, "Impossible d'ouvrir le peripherique USB.")
+        try {
+            val usbInterface = chooseInterface(device)
+                ?: return PrintResult(false, "Interface imprimante introuvable sur ce peripherique.")
+            if (!conn.claimInterface(usbInterface, true)) {
+                return PrintResult(false, "Impossible de prendre la main sur l'interface USB.")
+            }
+
+            val out = findBulkOut(usbInterface)
+                ?: return PrintResult(false, "Endpoint bulk OUT non trouve.")
 
             var offset = 0
             val chunkSize = 2048
@@ -42,16 +63,12 @@ class UsbEscPosPrinter(
                 val len = minOf(chunkSize, payload.size - offset)
                 val chunk = payload.copyOfRange(offset, offset + len)
                 val sent = conn.bulkTransfer(out, chunk, chunk.size, 3000)
-                if (sent <= 0) return false
+                if (sent <= 0) return PrintResult(false, "Echec d'envoi USB (bulkTransfer=$sent).")
                 offset += sent
             }
 
-            return true
+            return PrintResult(true, "Ticket envoye (${payload.size} octets).")
         } finally {
-            try {
-                // no-op
-            } catch (_: Exception) {
-            }
             conn.close()
         }
     }
