@@ -23,7 +23,7 @@ Route::get('/autoriser', function () {
 
 Auth::routes(['register' => false]);
 
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth', 'user.permission'])->group(function () {
     Route::resource('fournisseurs', 'FournisseurController');
     Route::resource('clients', 'ClientController');
 
@@ -34,6 +34,8 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/caisse/imprimer', 'VenteController@imprimerTicket')->name('caisse.imprimer');
     Route::post('/caisse/store-infos-ticket', 'VenteController@storeInfosTicket')->name('caisse.storeInfosTicket');
     Route::post('/caisse/add', 'VenteController@addToCart')->name('caisse.add');
+    Route::get('/caisse/search-products', 'VenteController@searchProducts')->name('caisse.searchProducts');
+    Route::get('/caisse/search-clients', 'VenteController@searchClients')->name('caisse.searchClients');
     Route::post('/caisse/valider', 'VenteController@validerVente')->name('caisse.valider');
     Route::delete('/caisse/remove/{id}', 'VenteController@remove')->name('caisse.remove');
     Route::post('/caisse/vider', 'VenteController@vider')->name('caisse.vider');
@@ -66,6 +68,8 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/products/reference-next', 'ProductController@nextReference')->name('products.referenceNext');
     Route::resource('products', 'ProductController');
     Route::get('/products/{product}/print-label', 'ProductController@printLabel')->name('products.printLabel');
+    Route::get('/qz/certificate', 'QzTrayController@certificate')->name('qz.certificate');
+    Route::post('/qz/sign', 'QzTrayController@sign')->name('qz.sign');
 
     Route::resource('users', 'UtilisateurController');
     Route::resource('categories', 'CategoryController')->except(['create', 'show', 'edit']);
@@ -77,9 +81,17 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/bons-livraison/{bon}/convert', 'BonLivraisonController@convertToSale')->name('bons-livraison.convert.store');
     Route::resource('devis', 'DevisController')->except(['show']);
     Route::get('/devis/{devi}/print', 'DevisController@print')->name('devis.print');
+    Route::get('/devis/{devi}/facture/create', 'FactureController@createFromDevis')->name('devis.facture.create');
+    Route::post('/devis/{devi}/facture', 'FactureController@storeFromDevis')->name('devis.facture.store');
     Route::get('/avoirs', 'AvoirController@index')->name('avoirs.index');
     Route::get('/avoirs/{avoir}/print', 'AvoirController@print')->name('avoirs.print');
 
     Route::resource('factures', 'FactureController')->except(['create', 'store']);
     Route::get('/factures/{facture}/print', 'FactureController@print')->name('factures.print');
+    Route::get('/ventes/{vente}/facture/create', 'FactureController@createFromVente')->name('ventes.facture.create');
+    Route::post('/ventes/{vente}/facture', 'FactureController@storeFromVente')->name('ventes.facture.store');
+
+    Route::get('/settings', 'SettingsController@index')->name('settings.index');
+    Route::post('/settings/company', 'SettingsController@updateCompany')->name('settings.company.update');
+    Route::post('/settings/export-excel', 'SettingsController@exportExcel')->name('settings.export.excel');
 });

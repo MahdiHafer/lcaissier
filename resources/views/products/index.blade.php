@@ -94,7 +94,10 @@
                     <td>
                         @if($product->variants->count())
                             @foreach($product->variants as $variant)
-                                <div class="small">{{ $variant->size ?: '-' }} / {{ optional($variant->color)->name ?: '-' }} : {{ $variant->quantity }}</div>
+                                <div class="small d-flex align-items-center gap-2 mb-1">
+                                    <span>{{ $variant->size ?: '-' }} / {{ optional($variant->color)->name ?: '-' }} : {{ $variant->quantity }}</span>
+                                    <a href="{{ route('products.printLabel', ['product' => $product, 'variant_id' => $variant->id]) }}" target="_blank" class="btn btn-xs btn-outline-secondary" style="padding:1px 6px;font-size:11px;">Etiq.</a>
+                                </div>
                             @endforeach
                         @else
                             <span class="text-muted">-</span>

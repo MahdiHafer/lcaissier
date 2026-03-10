@@ -21,6 +21,7 @@ class User extends Authenticatable
         'access_code',
         'password',
         'role', // Ajout de la colonne role
+        'permissions',
     ];
     
 
@@ -40,5 +41,21 @@ class User extends Authenticatable
      */
     protected $casts = [
         'email_verified_at' => 'datetime',
+        'permissions' => 'array',
     ];
+
+    public function hasPermission(string $permission): bool
+    {
+        if ($this->role === 'admin') {
+            return true;
+        }
+
+        // Legacy users without explicit permissions keep historical access behavior.
+        if ($this->permissions === null) {
+            return true;
+        }
+
+        $permissions = is_array($this->permissions) ? $this->permissions : [];
+        return in_array($permission, $permissions, true);
+    }
 }

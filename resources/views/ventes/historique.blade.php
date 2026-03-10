@@ -79,6 +79,7 @@
                     <td class="{{ $vente->net_a_payer - $vente->montant_paye > 0 ? 'text-warning fw-bold' : '' }}">{{ number_format($vente->net_a_payer - $vente->montant_paye, 2) }} DH</td>
                     <td class="text-end">
                         <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#detailsModal{{ $vente->id }}">Details</button>
+                        <a href="{{ route('ventes.facture.create', $vente) }}" class="btn btn-sm btn-outline-success">Facture</a>
                         <a href="{{ route('ventes.avoir.create', $vente) }}" class="btn btn-sm btn-outline-warning">Avoir</a>
                         @if(auth()->user()->role === 'admin')
                             <a href="{{ route('ventes.edit', $vente->id) }}" class="btn btn-sm btn-outline-secondary">Edit</a>

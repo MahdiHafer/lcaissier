@@ -4,7 +4,11 @@
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2 class="m-0">Factures</h2>
-        <a href="{{ route('bons-livraison.index') }}" class="btn btn-outline-secondary">Depuis BL</a>
+        <div class="d-flex gap-2">
+            <a href="{{ route('bons-livraison.index') }}" class="btn btn-outline-secondary">Depuis BL</a>
+            <a href="{{ route('ventes.historique') }}" class="btn btn-outline-secondary">Depuis Ventes</a>
+            <a href="{{ route('devis.index') }}" class="btn btn-outline-secondary">Depuis Devis</a>
+        </div>
     </div>
 
     <form method="GET" class="card p-3 mb-3">

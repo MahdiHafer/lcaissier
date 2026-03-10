@@ -15,6 +15,18 @@
             <div class="card p-3 h-100">
                 <div><strong>Date:</strong> {{ \Carbon\Carbon::parse($facture->date_facture)->format('d/m/Y') }}</div>
                 <div><strong>Client:</strong> {{ optional($facture->client)->nom ?: 'Client comptoir' }}</div>
+                <div>
+                    <strong>Source:</strong>
+                    @if($facture->bon_livraison_id)
+                        BL #{{ $facture->bon_livraison_id }}
+                    @elseif($facture->vente_id)
+                        Vente #{{ optional($facture->vente)->numero_ticket ?: $facture->vente_id }}
+                    @elseif($facture->devis_id)
+                        Devis #{{ optional($facture->devis)->numero ?: $facture->devis_id }}
+                    @else
+                        -
+                    @endif
+                </div>
                 <div><strong>Societe:</strong> {{ optional($facture->client)->societe ?: '-' }}</div>
                 <div><strong>ICE/RC/IF:</strong> {{ optional($facture->client)->ice ?: '-' }} / {{ optional($facture->client)->rc ?: '-' }} / {{ optional($facture->client)->if_fiscal ?: '-' }}</div>
                 <div><strong>Telephone:</strong> {{ optional($facture->client)->telephone ?: '-' }}</div>
@@ -63,6 +75,13 @@
     </div>
 
     <div class="card p-3 ms-auto" style="max-width: 420px;">
+        @php
+            $remiseLabel = ($facture->remise_type ?? 'dh') === '%'
+                ? rtrim(rtrim(number_format((float) ($facture->remise_value ?? 0), 2, '.', ''), '0'), '.') . ' %'
+                : number_format((float) ($facture->remise_value ?? 0), 2) . ' DH';
+        @endphp
+        <div class="d-flex justify-content-between mb-1"><span>Sous-total HT</span><strong>{{ number_format(($facture->total_ht ?? 0) + ($facture->remise_amount ?? 0), 2) }} DH</strong></div>
+        <div class="d-flex justify-content-between mb-1"><span>Remise HT ({{ $remiseLabel }})</span><strong>-{{ number_format($facture->remise_amount ?? 0, 2) }} DH</strong></div>
         <div class="d-flex justify-content-between mb-1"><span>Total HT</span><strong>{{ number_format($facture->total_ht, 2) }} DH</strong></div>
         <div class="d-flex justify-content-between mb-1"><span>TVA ({{ number_format($facture->tva_rate, 2) }}%)</span><strong>{{ number_format($facture->tva_amount, 2) }} DH</strong></div>
         <div class="d-flex justify-content-between fs-5"><span>Total TTC</span><strong>{{ number_format($facture->total_ttc, 2) }} DH</strong></div>

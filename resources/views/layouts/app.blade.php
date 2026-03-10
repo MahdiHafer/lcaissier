@@ -16,12 +16,16 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body>
+@php
+    $appLogo = asset($companySettings['logo'] ?? 'logo.png');
+    $u = auth()->user();
+@endphp
 <div class="app-shell">
 @auth
     <nav class="navbar navbar-expand-lg topbar px-3">
         <div class="container-fluid">
             <a class="navbar-brand" href="{{ route('caisse.index') }}">
-                <img src="{{ asset('logo.png') }}" alt="Logo">
+                <img src="{{ $appLogo }}" alt="Logo">
             </a>
 
             <button class="navbar-toggler ms-auto" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMenu" aria-controls="navbarMenu" aria-expanded="false" aria-label="Toggle navigation">
@@ -30,68 +34,97 @@
 
             <div class="collapse navbar-collapse justify-content-end" id="navbarMenu">
                 <ul class="navbar-nav align-items-lg-center mt-2 mt-lg-0">
-                    @if (auth()->user()->role === 'admin')
+                    @if ($u->hasPermission('dashboard.view'))
                     <li class="nav-item nav-pill">
                         <a href="{{ route('dashboard.index') }}" class="nav-link {{ request()->is('dashboard*') ? 'active' : '' }}">Dashboard</a>
                     </li>
                     @endif
 
+                    @if ($u->hasPermission('caisse.use'))
                     <li class="nav-item nav-pill">
                         <a href="{{ route('caisse.index') }}" class="nav-link {{ request()->is('caisse*') ? 'active' : '' }}">Caisse</a>
                     </li>
+                    @endif
 
-                    <li class="nav-item nav-pill">
-                        <a href="{{ route('products.index', ['type' => 'produit']) }}" class="nav-link {{ request()->is('products*') ? 'active' : '' }}">Produits</a>
-                    </li>
-                    <li class="nav-item nav-pill">
-                        <a href="{{ route('stock.dashboard') }}" class="nav-link {{ request()->is('stock*') || request()->is('inventory*') ? 'active' : '' }}">Stock</a>
-                    </li>
-
-                    @if (auth()->user()->role === 'admin')
-                    <li class="nav-item nav-pill">
-                        <a href="{{ route('categories.index') }}" class="nav-link {{ request()->is('categories*') ? 'active' : '' }}">Categories</a>
-                    </li>
-                    <li class="nav-item nav-pill">
-                        <a href="{{ route('colors.index') }}" class="nav-link {{ request()->is('colors*') ? 'active' : '' }}">Couleurs</a>
+                    @if ($u->hasPermission('catalog.products.view') || $u->hasPermission('catalog.stock.view') || $u->hasPermission('catalog.categories.manage') || $u->hasPermission('catalog.colors.manage'))
+                    <li class="nav-item dropdown nav-pill">
+                        <a class="nav-link dropdown-toggle {{ request()->is('products*') || request()->is('stock*') || request()->is('inventory*') || request()->is('categories*') || request()->is('colors*') ? 'active' : '' }}"
+                           href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Catalogue</a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            @if ($u->hasPermission('catalog.products.view'))
+                            <li><a class="dropdown-item" href="{{ route('products.index', ['type' => 'produit']) }}">Produits</a></li>
+                            @endif
+                            @if ($u->hasPermission('catalog.stock.view'))
+                            <li><a class="dropdown-item" href="{{ route('stock.dashboard') }}">Stock</a></li>
+                            @endif
+                            @if ($u->hasPermission('catalog.categories.manage') || $u->hasPermission('catalog.colors.manage'))
+                                <li><hr class="dropdown-divider"></li>
+                            @endif
+                            @if ($u->hasPermission('catalog.categories.manage'))
+                                <li><a class="dropdown-item" href="{{ route('categories.index') }}">Categories</a></li>
+                            @endif
+                            @if ($u->hasPermission('catalog.colors.manage'))
+                                <li><a class="dropdown-item" href="{{ route('colors.index') }}">Couleurs</a></li>
+                            @endif
+                        </ul>
                     </li>
                     @endif
 
-                    <li class="nav-item nav-pill">
-                        <a href="{{ route('clients.index') }}" class="nav-link {{ request()->is('clients*') ? 'active' : '' }}">Clients</a>
-                    </li>
-
-                    @php $role = auth()->user()->role; @endphp
-                    @if ($role === 'admin')
-                    <li class="nav-item nav-pill">
-                        <a href="{{ route('fournisseurs.index') }}" class="nav-link {{ request()->is('fournisseurs*') ? 'active' : '' }}">Fournisseurs</a>
-                    </li>
-                    @elseif ($role === 'agent')
-                    <li class="nav-item nav-pill">
-                        <a href="{{ route('fournisseurs.create') }}" class="nav-link {{ request()->is('fournisseurs/create') ? 'active' : '' }}">Nouveau Fournisseur</a>
-                    </li>
-                    @endif
-
-                    @if (auth()->user()->role === 'admin')
-                    <li class="nav-item nav-pill">
-                        <a href="{{ route('users.index') }}" class="nav-link {{ request()->is('users*') ? 'active' : '' }}">Utilisateurs</a>
+                    @if ($u->hasPermission('tiers.clients.view') || $u->hasPermission('tiers.fournisseurs.view') || $u->hasPermission('tiers.fournisseurs.create'))
+                    <li class="nav-item dropdown nav-pill">
+                        <a class="nav-link dropdown-toggle {{ request()->is('clients*') || request()->is('fournisseurs*') ? 'active' : '' }}"
+                           href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Tiers</a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            @if ($u->hasPermission('tiers.clients.view'))
+                            <li><a class="dropdown-item" href="{{ route('clients.index') }}">Clients</a></li>
+                            @endif
+                            @if ($u->hasPermission('tiers.fournisseurs.view'))
+                                <li><a class="dropdown-item" href="{{ route('fournisseurs.index') }}">Fournisseurs</a></li>
+                            @elseif ($u->hasPermission('tiers.fournisseurs.create'))
+                                <li><a class="dropdown-item" href="{{ route('fournisseurs.create') }}">Nouveau Fournisseur</a></li>
+                            @endif
+                        </ul>
                     </li>
                     @endif
 
-                    <li class="nav-item nav-pill">
-                        <a href="{{ route('ventes.historique') }}" class="nav-link {{ request()->is('ventes*') ? 'active' : '' }}">Ventes</a>
+                    @if ($u->hasPermission('documents.ventes.view') || $u->hasPermission('documents.bl.view') || $u->hasPermission('documents.devis.view') || $u->hasPermission('documents.factures.view') || $u->hasPermission('documents.avoirs.view'))
+                    <li class="nav-item dropdown nav-pill">
+                        <a class="nav-link dropdown-toggle {{ request()->is('ventes*') || request()->is('bons-livraison*') || request()->is('devis*') || request()->is('avoirs*') || request()->is('factures*') ? 'active' : '' }}"
+                           href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Documents</a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            @if ($u->hasPermission('documents.ventes.view'))
+                            <li><a class="dropdown-item" href="{{ route('ventes.historique') }}">Ventes</a></li>
+                            @endif
+                            @if ($u->hasPermission('documents.bl.view'))
+                            <li><a class="dropdown-item" href="{{ route('bons-livraison.index') }}">BL</a></li>
+                            @endif
+                            @if ($u->hasPermission('documents.devis.view'))
+                            <li><a class="dropdown-item" href="{{ route('devis.index') }}">Devis</a></li>
+                            @endif
+                            @if ($u->hasPermission('documents.factures.view'))
+                            <li><a class="dropdown-item" href="{{ route('factures.index') }}">Factures</a></li>
+                            @endif
+                            @if ($u->hasPermission('documents.avoirs.view'))
+                            <li><a class="dropdown-item" href="{{ route('avoirs.index') }}">Avoirs</a></li>
+                            @endif
+                        </ul>
                     </li>
-                    <li class="nav-item nav-pill">
-                        <a href="{{ route('bons-livraison.index') }}" class="nav-link {{ request()->is('bons-livraison*') ? 'active' : '' }}">BL</a>
+                    @endif
+
+                    @if ($u->hasPermission('settings.entreprise') || $u->hasPermission('settings.exports') || $u->hasPermission('settings.users.manage'))
+                    <li class="nav-item dropdown nav-pill">
+                        <a class="nav-link dropdown-toggle {{ request()->is('settings*') || request()->is('users*') ? 'active' : '' }}"
+                           href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Parametres</a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            @if ($u->hasPermission('settings.entreprise') || $u->hasPermission('settings.exports'))
+                            <li><a class="dropdown-item" href="{{ route('settings.index') }}">Entreprise</a></li>
+                            @endif
+                            @if ($u->hasPermission('settings.users.manage'))
+                                <li><a class="dropdown-item" href="{{ route('users.index') }}">Utilisateurs</a></li>
+                            @endif
+                        </ul>
                     </li>
-                    <li class="nav-item nav-pill">
-                        <a href="{{ route('devis.index') }}" class="nav-link {{ request()->is('devis*') ? 'active' : '' }}">Devis</a>
-                    </li>
-                    <li class="nav-item nav-pill">
-                        <a href="{{ route('avoirs.index') }}" class="nav-link {{ request()->is('avoirs*') ? 'active' : '' }}">Avoirs</a>
-                    </li>
-                    <li class="nav-item nav-pill">
-                        <a href="{{ route('factures.index') }}" class="nav-link {{ request()->is('factures*') ? 'active' : '' }}">Factures</a>
-                    </li>
+                    @endif
 
                     <li class="nav-item ms-lg-2 mt-2 mt-lg-0">
                         <form method="POST" action="{{ route('logout') }}" class="d-inline">

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\AppSetting;
 use App\BonLivraison;
 use App\Client;
 use App\Facture;
@@ -36,7 +37,7 @@ class BonLivraisonController extends Controller
     public function create()
     {
         $clients = Client::orderBy('nom')->get();
-        $products = Product::orderBy('marque')->get();
+        $products = Product::where('quantite', '>', 0)->orderBy('marque')->get();
 
         return view('bons_livraison.create', compact('clients', 'products'));
     }
@@ -87,7 +88,13 @@ class BonLivraisonController extends Controller
     {
         $bon = $bons_livraison->load('details');
         $clients = Client::orderBy('nom')->get();
-        $products = Product::orderBy('marque')->get();
+        $existingProductIds = $bon->details->pluck('product_id')->filter()->unique()->values();
+        $products = Product::where(function ($q) use ($existingProductIds) {
+            $q->where('quantite', '>', 0);
+            if ($existingProductIds->isNotEmpty()) {
+                $q->orWhereIn('id', $existingProductIds);
+            }
+        })->orderBy('marque')->get();
 
         return view('bons_livraison.edit', compact('bon', 'clients', 'products'));
     }
@@ -136,12 +143,23 @@ class BonLivraisonController extends Controller
 
     public function destroy(BonLivraison $bons_livraison)
     {
-        if ($bons_livraison->details()->where('quantite_vendue', '>', 0)->exists()) {
-            return back()->with('error', 'BL deja converti en vente: suppression bloquee.');
-        }
+        DB::beginTransaction();
+        try {
+            // Keep accounting docs but detach the BL reference.
+            Facture::where('bon_livraison_id', $bons_livraison->id)->update([
+                'bon_livraison_id' => null,
+            ]);
 
-        $bons_livraison->delete();
-        return back()->with('success', 'Bon de livraison supprime avec succes.');
+            // Delete lines explicitly to avoid FK issues on databases where cascade is missing.
+            $bons_livraison->details()->delete();
+            $bons_livraison->delete();
+
+            DB::commit();
+            return back()->with('success', 'Bon de livraison supprime avec succes.');
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return back()->with('error', 'Suppression BL impossible: ' . $e->getMessage());
+        }
     }
 
     public function print(BonLivraison $bon)
@@ -165,9 +183,14 @@ class BonLivraisonController extends Controller
             'sell_qty.*' => 'nullable|integer|min:0',
             'mode_paiement' => 'required|string',
             'remise' => 'nullable|numeric|min:0',
+            'type_remise' => 'nullable|in:dh,%',
             'montant_paye' => 'nullable|numeric|min:0',
             'tva_rate' => 'nullable|numeric|min:0|max:100',
         ]);
+
+        if ($request->input('type_remise', 'dh') === '%' && (float) ($request->input('remise', 0)) > 100) {
+            return back()->with('error', 'La remise en pourcentage ne peut pas depasser 100%.');
+        }
 
         $selectedLines = $bon->details()
             ->whereIn('id', $request->detail_ids)
@@ -210,7 +233,15 @@ class BonLivraisonController extends Controller
             }
 
             $total = (float) $linesToSell->sum('line_total');
-            $remise = (float) ($request->remise ?? 0);
+            $tvaRate = max((float) ($request->tva_rate ?? 20), 0);
+            $factor = 1 + ($tvaRate / 100);
+            $totalHt = $factor > 0 ? round($total / $factor, 2) : $total;
+            $typeRemise = $request->input('type_remise', 'dh');
+            $remiseValue = (float) ($request->remise ?? 0);
+            $remiseHt = $typeRemise === '%'
+                ? round($totalHt * (min($remiseValue, 100) / 100), 2)
+                : round(min(max($remiseValue, 0), $totalHt), 2);
+            $remise = round(min(max($remiseHt * $factor, 0), $total), 2);
             $net = max($total - $remise, 0);
             $modePaiement = $request->mode_paiement;
             $montantPaye = $modePaiement === 'Credit' ? (float) ($request->montant_paye ?? 0) : $net;
@@ -269,7 +300,14 @@ class BonLivraisonController extends Controller
                 $line->save();
             }
 
-            $facture = $this->createInvoiceFromSale($bon, $vente, $linesToSell, (float) ($request->tva_rate ?? 20));
+            $facture = $this->createInvoiceFromSale(
+                $bon,
+                $vente,
+                $linesToSell,
+                $tvaRate,
+                $typeRemise,
+                $remiseValue
+            );
             $this->refreshBonStatus($bon);
 
             DB::commit();
@@ -374,11 +412,22 @@ class BonLivraisonController extends Controller
         $bon->save();
     }
 
-    private function createInvoiceFromSale(BonLivraison $bon, Vente $vente, $linesToSell, float $tvaRate): Facture
+    private function createInvoiceFromSale(BonLivraison $bon, Vente $vente, $linesToSell, float $tvaRate, string $remiseType, float $remiseValue): Facture
     {
-        $totalHt = round((float) $linesToSell->sum('line_total'), 2);
+        // Prices are stored TTC in BL lines. Discount is applied on HT.
+        $baseTtc = round((float) $linesToSell->sum('line_total'), 2);
+        $tvaRate = max($tvaRate, 0);
+        $factor = 1 + ($tvaRate / 100);
+        $baseHt = $factor > 0 ? round($baseTtc / $factor, 2) : $baseTtc;
+        $remiseType = $remiseType === '%' ? '%' : 'dh';
+        $remiseValue = max($remiseValue, 0);
+        $remiseAmount = $remiseType === '%'
+            ? round($baseHt * (min($remiseValue, 100) / 100), 2)
+            : round(min($remiseValue, $baseHt), 2);
+        $totalHt = round(max($baseHt - $remiseAmount, 0), 2);
         $tvaAmount = round($totalHt * ($tvaRate / 100), 2);
         $totalTtc = round($totalHt + $tvaAmount, 2);
+        $settings = AppSetting::allAsMap();
 
         $facture = Facture::create([
             'numero' => $this->generateFactureNumber(),
@@ -388,16 +437,19 @@ class BonLivraisonController extends Controller
             'vente_id' => $vente->id,
             'total_ht' => $totalHt,
             'tva_rate' => $tvaRate,
+            'remise_type' => $remiseType,
+            'remise_value' => $remiseValue,
+            'remise_amount' => $remiseAmount,
             'tva_amount' => $tvaAmount,
             'total_ttc' => $totalTtc,
-            'legal_company_name' => env('LEGAL_COMPANY_NAME', env('COMPANY_NAME', config('app.name'))),
-            'legal_ice' => env('LEGAL_ICE'),
-            'legal_rc' => env('LEGAL_RC'),
-            'legal_if' => env('LEGAL_IF'),
-            'legal_cnss' => env('LEGAL_CNSS'),
-            'legal_address' => env('COMPANY_ADDRESS'),
-            'legal_phone' => env('COMPANY_PHONE'),
-            'legal_email' => env('COMPANY_EMAIL'),
+            'legal_company_name' => $settings['company_name'] ?? env('LEGAL_COMPANY_NAME', env('COMPANY_NAME', config('app.name'))),
+            'legal_ice' => $settings['company_ice'] ?? env('LEGAL_ICE'),
+            'legal_rc' => $settings['company_rc'] ?? env('LEGAL_RC'),
+            'legal_if' => $settings['company_if'] ?? env('LEGAL_IF'),
+            'legal_cnss' => $settings['company_cnss'] ?? env('LEGAL_CNSS'),
+            'legal_address' => $settings['company_address'] ?? env('COMPANY_ADDRESS'),
+            'legal_phone' => $settings['company_phone'] ?? env('COMPANY_PHONE'),
+            'legal_email' => $settings['company_email'] ?? env('COMPANY_EMAIL'),
             'user_id' => auth()->id(),
         ]);
 

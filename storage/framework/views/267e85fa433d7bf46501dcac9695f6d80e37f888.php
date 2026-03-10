@@ -16,12 +16,16 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body>
+<?php
+    $appLogo = asset($companySettings['logo'] ?? 'logo.png');
+    $u = auth()->user();
+?>
 <div class="app-shell">
 <?php if(auth()->guard()->check()): ?>
     <nav class="navbar navbar-expand-lg topbar px-3">
         <div class="container-fluid">
             <a class="navbar-brand" href="<?php echo e(route('caisse.index')); ?>">
-                <img src="<?php echo e(asset('logo.png')); ?>" alt="Logo">
+                <img src="<?php echo e($appLogo); ?>" alt="Logo">
             </a>
 
             <button class="navbar-toggler ms-auto" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMenu" aria-controls="navbarMenu" aria-expanded="false" aria-label="Toggle navigation">
@@ -30,68 +34,97 @@
 
             <div class="collapse navbar-collapse justify-content-end" id="navbarMenu">
                 <ul class="navbar-nav align-items-lg-center mt-2 mt-lg-0">
-                    <?php if(auth()->user()->role === 'admin'): ?>
+                    <?php if($u->hasPermission('dashboard.view')): ?>
                     <li class="nav-item nav-pill">
                         <a href="<?php echo e(route('dashboard.index')); ?>" class="nav-link <?php echo e(request()->is('dashboard*') ? 'active' : ''); ?>">Dashboard</a>
                     </li>
                     <?php endif; ?>
 
+                    <?php if($u->hasPermission('caisse.use')): ?>
                     <li class="nav-item nav-pill">
                         <a href="<?php echo e(route('caisse.index')); ?>" class="nav-link <?php echo e(request()->is('caisse*') ? 'active' : ''); ?>">Caisse</a>
                     </li>
+                    <?php endif; ?>
 
-                    <li class="nav-item nav-pill">
-                        <a href="<?php echo e(route('products.index', ['type' => 'produit'])); ?>" class="nav-link <?php echo e(request()->is('products*') ? 'active' : ''); ?>">Produits</a>
-                    </li>
-                    <li class="nav-item nav-pill">
-                        <a href="<?php echo e(route('stock.dashboard')); ?>" class="nav-link <?php echo e(request()->is('stock*') || request()->is('inventory*') ? 'active' : ''); ?>">Stock</a>
-                    </li>
-
-                    <?php if(auth()->user()->role === 'admin'): ?>
-                    <li class="nav-item nav-pill">
-                        <a href="<?php echo e(route('categories.index')); ?>" class="nav-link <?php echo e(request()->is('categories*') ? 'active' : ''); ?>">Categories</a>
-                    </li>
-                    <li class="nav-item nav-pill">
-                        <a href="<?php echo e(route('colors.index')); ?>" class="nav-link <?php echo e(request()->is('colors*') ? 'active' : ''); ?>">Couleurs</a>
+                    <?php if($u->hasPermission('catalog.products.view') || $u->hasPermission('catalog.stock.view') || $u->hasPermission('catalog.categories.manage') || $u->hasPermission('catalog.colors.manage')): ?>
+                    <li class="nav-item dropdown nav-pill">
+                        <a class="nav-link dropdown-toggle <?php echo e(request()->is('products*') || request()->is('stock*') || request()->is('inventory*') || request()->is('categories*') || request()->is('colors*') ? 'active' : ''); ?>"
+                           href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Catalogue</a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <?php if($u->hasPermission('catalog.products.view')): ?>
+                            <li><a class="dropdown-item" href="<?php echo e(route('products.index', ['type' => 'produit'])); ?>">Produits</a></li>
+                            <?php endif; ?>
+                            <?php if($u->hasPermission('catalog.stock.view')): ?>
+                            <li><a class="dropdown-item" href="<?php echo e(route('stock.dashboard')); ?>">Stock</a></li>
+                            <?php endif; ?>
+                            <?php if($u->hasPermission('catalog.categories.manage') || $u->hasPermission('catalog.colors.manage')): ?>
+                                <li><hr class="dropdown-divider"></li>
+                            <?php endif; ?>
+                            <?php if($u->hasPermission('catalog.categories.manage')): ?>
+                                <li><a class="dropdown-item" href="<?php echo e(route('categories.index')); ?>">Categories</a></li>
+                            <?php endif; ?>
+                            <?php if($u->hasPermission('catalog.colors.manage')): ?>
+                                <li><a class="dropdown-item" href="<?php echo e(route('colors.index')); ?>">Couleurs</a></li>
+                            <?php endif; ?>
+                        </ul>
                     </li>
                     <?php endif; ?>
 
-                    <li class="nav-item nav-pill">
-                        <a href="<?php echo e(route('clients.index')); ?>" class="nav-link <?php echo e(request()->is('clients*') ? 'active' : ''); ?>">Clients</a>
-                    </li>
-
-                    <?php $role = auth()->user()->role; ?>
-                    <?php if($role === 'admin'): ?>
-                    <li class="nav-item nav-pill">
-                        <a href="<?php echo e(route('fournisseurs.index')); ?>" class="nav-link <?php echo e(request()->is('fournisseurs*') ? 'active' : ''); ?>">Fournisseurs</a>
-                    </li>
-                    <?php elseif($role === 'agent'): ?>
-                    <li class="nav-item nav-pill">
-                        <a href="<?php echo e(route('fournisseurs.create')); ?>" class="nav-link <?php echo e(request()->is('fournisseurs/create') ? 'active' : ''); ?>">Nouveau Fournisseur</a>
-                    </li>
-                    <?php endif; ?>
-
-                    <?php if(auth()->user()->role === 'admin'): ?>
-                    <li class="nav-item nav-pill">
-                        <a href="<?php echo e(route('users.index')); ?>" class="nav-link <?php echo e(request()->is('users*') ? 'active' : ''); ?>">Utilisateurs</a>
+                    <?php if($u->hasPermission('tiers.clients.view') || $u->hasPermission('tiers.fournisseurs.view') || $u->hasPermission('tiers.fournisseurs.create')): ?>
+                    <li class="nav-item dropdown nav-pill">
+                        <a class="nav-link dropdown-toggle <?php echo e(request()->is('clients*') || request()->is('fournisseurs*') ? 'active' : ''); ?>"
+                           href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Tiers</a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <?php if($u->hasPermission('tiers.clients.view')): ?>
+                            <li><a class="dropdown-item" href="<?php echo e(route('clients.index')); ?>">Clients</a></li>
+                            <?php endif; ?>
+                            <?php if($u->hasPermission('tiers.fournisseurs.view')): ?>
+                                <li><a class="dropdown-item" href="<?php echo e(route('fournisseurs.index')); ?>">Fournisseurs</a></li>
+                            <?php elseif($u->hasPermission('tiers.fournisseurs.create')): ?>
+                                <li><a class="dropdown-item" href="<?php echo e(route('fournisseurs.create')); ?>">Nouveau Fournisseur</a></li>
+                            <?php endif; ?>
+                        </ul>
                     </li>
                     <?php endif; ?>
 
-                    <li class="nav-item nav-pill">
-                        <a href="<?php echo e(route('ventes.historique')); ?>" class="nav-link <?php echo e(request()->is('ventes*') ? 'active' : ''); ?>">Ventes</a>
+                    <?php if($u->hasPermission('documents.ventes.view') || $u->hasPermission('documents.bl.view') || $u->hasPermission('documents.devis.view') || $u->hasPermission('documents.factures.view') || $u->hasPermission('documents.avoirs.view')): ?>
+                    <li class="nav-item dropdown nav-pill">
+                        <a class="nav-link dropdown-toggle <?php echo e(request()->is('ventes*') || request()->is('bons-livraison*') || request()->is('devis*') || request()->is('avoirs*') || request()->is('factures*') ? 'active' : ''); ?>"
+                           href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Documents</a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <?php if($u->hasPermission('documents.ventes.view')): ?>
+                            <li><a class="dropdown-item" href="<?php echo e(route('ventes.historique')); ?>">Ventes</a></li>
+                            <?php endif; ?>
+                            <?php if($u->hasPermission('documents.bl.view')): ?>
+                            <li><a class="dropdown-item" href="<?php echo e(route('bons-livraison.index')); ?>">BL</a></li>
+                            <?php endif; ?>
+                            <?php if($u->hasPermission('documents.devis.view')): ?>
+                            <li><a class="dropdown-item" href="<?php echo e(route('devis.index')); ?>">Devis</a></li>
+                            <?php endif; ?>
+                            <?php if($u->hasPermission('documents.factures.view')): ?>
+                            <li><a class="dropdown-item" href="<?php echo e(route('factures.index')); ?>">Factures</a></li>
+                            <?php endif; ?>
+                            <?php if($u->hasPermission('documents.avoirs.view')): ?>
+                            <li><a class="dropdown-item" href="<?php echo e(route('avoirs.index')); ?>">Avoirs</a></li>
+                            <?php endif; ?>
+                        </ul>
                     </li>
-                    <li class="nav-item nav-pill">
-                        <a href="<?php echo e(route('bons-livraison.index')); ?>" class="nav-link <?php echo e(request()->is('bons-livraison*') ? 'active' : ''); ?>">BL</a>
+                    <?php endif; ?>
+
+                    <?php if($u->hasPermission('settings.entreprise') || $u->hasPermission('settings.exports') || $u->hasPermission('settings.users.manage')): ?>
+                    <li class="nav-item dropdown nav-pill">
+                        <a class="nav-link dropdown-toggle <?php echo e(request()->is('settings*') || request()->is('users*') ? 'active' : ''); ?>"
+                           href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Parametres</a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <?php if($u->hasPermission('settings.entreprise') || $u->hasPermission('settings.exports')): ?>
+                            <li><a class="dropdown-item" href="<?php echo e(route('settings.index')); ?>">Entreprise</a></li>
+                            <?php endif; ?>
+                            <?php if($u->hasPermission('settings.users.manage')): ?>
+                                <li><a class="dropdown-item" href="<?php echo e(route('users.index')); ?>">Utilisateurs</a></li>
+                            <?php endif; ?>
+                        </ul>
                     </li>
-                    <li class="nav-item nav-pill">
-                        <a href="<?php echo e(route('devis.index')); ?>" class="nav-link <?php echo e(request()->is('devis*') ? 'active' : ''); ?>">Devis</a>
-                    </li>
-                    <li class="nav-item nav-pill">
-                        <a href="<?php echo e(route('avoirs.index')); ?>" class="nav-link <?php echo e(request()->is('avoirs*') ? 'active' : ''); ?>">Avoirs</a>
-                    </li>
-                    <li class="nav-item nav-pill">
-                        <a href="<?php echo e(route('factures.index')); ?>" class="nav-link <?php echo e(request()->is('factures*') ? 'active' : ''); ?>">Factures</a>
-                    </li>
+                    <?php endif; ?>
 
                     <li class="nav-item ms-lg-2 mt-2 mt-lg-0">
                         <form method="POST" action="<?php echo e(route('logout')); ?>" class="d-inline">

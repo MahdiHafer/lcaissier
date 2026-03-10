@@ -37,10 +37,10 @@
 </head>
 <body onload="window.print()">
 @php
-    $companyName = env('COMPANY_NAME', config('app.name', "L'CAISSIER"));
-    $companyAddress = env('COMPANY_ADDRESS', 'Adresse entreprise');
-    $companyPhone = env('COMPANY_PHONE', 'Telephone');
-    $companyEmail = env('COMPANY_EMAIL', 'Email');
+    $companyName = $companySettings['name'] ?? config('app.name', "L'CAISSIER");
+    $companyAddress = $companySettings['address'] ?? 'Adresse entreprise';
+    $companyPhone = $companySettings['phone'] ?? 'Telephone';
+    $companyEmail = $companySettings['email'] ?? 'Email';
 @endphp
 
 <div class="page-content">

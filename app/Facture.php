@@ -12,8 +12,12 @@ class Facture extends Model
         'client_id',
         'bon_livraison_id',
         'vente_id',
+        'devis_id',
         'total_ht',
         'tva_rate',
+        'remise_type',
+        'remise_value',
+        'remise_amount',
         'tva_amount',
         'total_ttc',
         'legal_company_name',
@@ -37,5 +41,19 @@ class Facture extends Model
     {
         return $this->belongsTo(Client::class, 'client_id');
     }
-}
 
+    public function vente()
+    {
+        return $this->belongsTo(Vente::class, 'vente_id');
+    }
+
+    public function devis()
+    {
+        return $this->belongsTo(Devis::class, 'devis_id');
+    }
+
+    public function bonLivraison()
+    {
+        return $this->belongsTo(BonLivraison::class, 'bon_livraison_id');
+    }
+}

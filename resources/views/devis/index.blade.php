@@ -41,6 +41,7 @@
                     <td>{{ number_format($d->total, 2) }} DH</td>
                     <td class="text-end">
                         <a href="{{ route('devis.print', $d) }}" target="_blank" class="btn btn-sm btn-outline-secondary">Imprimer</a>
+                        <a href="{{ route('devis.facture.create', $d) }}" class="btn btn-sm btn-outline-success">Facture</a>
                         <a href="{{ route('devis.edit', $d) }}" class="btn btn-sm btn-outline-primary">Modifier</a>
                         <form method="POST" action="{{ route('devis.destroy', $d) }}" class="d-inline" onsubmit="return confirm('Supprimer ce devis ?')">
                             @csrf

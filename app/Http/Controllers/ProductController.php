@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\AppSetting;
 use App\Category;
 use App\Color;
 use App\Fournisseur;
@@ -15,14 +16,31 @@ class ProductController extends Controller
 {
     public function printLabel(Product $product, Request $request)
     {
+        $product->loadMissing('variants.color');
+        $variant = null;
+        $settings = AppSetting::allAsMap();
+
+        if ($request->filled('variant_id')) {
+            $variant = $product->variants()->with('color')->find((int) $request->input('variant_id'));
+            if (!$variant) {
+                abort(404, 'Variante introuvable pour ce produit');
+            }
+        }
+
         $rawCode = $product->codebar;
         $fallbackCode = 'PROD-' . str_pad((string) $product->id, 6, '0', STR_PAD_LEFT);
+        if ($variant) {
+            $fallbackCode .= '-V' . $variant->id;
+        }
         [$barcodeSrc, $barcodeCode] = $this->buildBarcodeImage($rawCode, $fallbackCode);
 
         return view('products.print-label', [
             'product' => $product,
+            'variant' => $variant,
             'barcodeSrc' => $barcodeSrc,
             'barcodeCode' => $barcodeCode,
+            'directPrint' => (bool) $request->boolean('direct', true),
+            'labelPrinterName' => $settings['label_printer_name'] ?? env('LABEL_PRINTER_NAME'),
         ]);
     }
 
@@ -82,11 +100,12 @@ class ProductController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'reference' => 'nullable|string|regex:/^[A-Z0-9]{3}\d{2}\d{3}[A-Z0-9]{2,}$/|unique:products,reference',
+            'reference' => 'nullable|string|max:100|unique:products,reference',
             'reference_type' => 'nullable|string|size:3|regex:/^[A-Za-z0-9]{3}$/',
             'reference_group' => 'nullable|string|size:2|regex:/^\d{2}$/',
             'reference_line' => 'nullable|string|min:1|max:20|regex:/^[A-Za-z0-9]+$/',
             'reference_season' => 'nullable|string|size:1|regex:/^[A-Za-z0-9]$/',
+            'reference_year' => 'nullable|string|size:2|regex:/^\d{2}$/',
             'codebar' => 'required|string|unique:products,codebar',
             'marque' => 'required|string',
             'category_id' => 'nullable|exists:categories,id',
@@ -174,11 +193,12 @@ class ProductController extends Controller
     public function update(Request $request, Product $product)
     {
         $validated = $request->validate([
-            'reference' => 'nullable|string|regex:/^[A-Z0-9]{3}\d{2}\d{3}[A-Z0-9]{2,}$/|unique:products,reference,' . $product->id,
+            'reference' => 'nullable|string|max:100|unique:products,reference,' . $product->id,
             'reference_type' => 'nullable|string|size:3|regex:/^[A-Za-z0-9]{3}$/',
             'reference_group' => 'nullable|string|size:2|regex:/^\d{2}$/',
             'reference_line' => 'nullable|string|min:1|max:20|regex:/^[A-Za-z0-9]+$/',
             'reference_season' => 'nullable|string|size:1|regex:/^[A-Za-z0-9]$/',
+            'reference_year' => 'nullable|string|size:2|regex:/^\d{2}$/',
             'codebar' => 'nullable|string|unique:products,codebar,' . $product->id,
             'marque' => 'required|string',
             'category_id' => 'nullable|exists:categories,id',
@@ -305,16 +325,18 @@ class ProductController extends Controller
             'group' => 'required|string|size:2|regex:/^\d{2}$/',
             'line' => 'required|string|min:1|max:20|regex:/^[A-Za-z0-9]+$/',
             'season' => 'required|string|size:1|regex:/^[A-Za-z0-9]$/',
+            'year' => 'required|string|size:2|regex:/^\d{2}$/',
         ]);
 
         $type = strtoupper($validated['type']);
         $group = $validated['group'];
         $line = strtoupper($validated['line']);
         $season = strtoupper($validated['season']);
+        $year = $validated['year'];
         $next = $this->getNextReferenceSequence();
 
         return response()->json([
-            'reference' => $type . $group . str_pad((string) $next, 3, '0', STR_PAD_LEFT) . $line . $season,
+            'reference' => $type . $group . str_pad((string) $next, 3, '0', STR_PAD_LEFT) . $line . $season . $year,
             'sequence' => str_pad((string) $next, 3, '0', STR_PAD_LEFT),
         ]);
     }
@@ -422,19 +444,20 @@ class ProductController extends Controller
         $group = trim((string) $request->input('reference_group', ''));
         $line = strtoupper(trim((string) $request->input('reference_line', '')));
         $season = strtoupper(trim((string) $request->input('reference_season', '')));
+        $year = trim((string) $request->input('reference_year', ''));
 
-        if ($type === '' && $group === '' && $line === '' && $season === '' && $currentReference) {
+        if ($type === '' && $group === '' && $line === '' && $season === '' && $year === '' && $currentReference) {
             return $currentReference;
         }
 
-        if ($type === '' || $group === '' || $line === '' || $season === '') {
+        if ($type === '' || $group === '' || $line === '' || $season === '' || $year === '') {
             throw ValidationException::withMessages([
-                'reference' => "Saisissez une reference (ex: COS02001TH) ou remplissez Type/Groupe/Ligne/Saison.",
+                'reference' => "Saisissez une reference (ex: COS02001TH26) ou remplissez Type/Groupe/Ligne/Saison/Annee.",
             ]);
         }
 
         $next = $this->getNextReferenceSequence($currentReference);
-        return $type . $group . str_pad((string) $next, 3, '0', STR_PAD_LEFT) . $line . $season;
+        return $type . $group . str_pad((string) $next, 3, '0', STR_PAD_LEFT) . $line . $season . $year;
     }
 
     private function getNextReferenceSequence(?string $currentReference = null): int

@@ -19,6 +19,7 @@ android {
         versionName = "1.0.1"
 
         buildConfigField("String", "POS_URL", "\"http://192.168.137.129:8000/caisse\"")
+        buildConfigField("String", "SETTINGS_PASSWORD", "\"2468\"")
     }
 
     signingConfigs {

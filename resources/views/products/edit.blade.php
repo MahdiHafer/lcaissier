@@ -8,11 +8,13 @@
         $refGroup = '';
         $refLine = '';
         $refSeason = '';
-        if (preg_match('/^([A-Z0-9]{3})(\d{2})(\d{3})([A-Z0-9]+)([A-Z0-9])$/', strtoupper((string)$product->reference), $m)) {
+        $refYear = '';
+        if (preg_match('/^([A-Z0-9]{3})(\d{2})(\d{3})([A-Z0-9]+?)([A-Z0-9])(\d{2})?$/', strtoupper((string)$product->reference), $m)) {
             $refType = $m[1];
             $refGroup = $m[2];
             $refLine = $m[4];
             $refSeason = $m[5];
+            $refYear = $m[6] ?? '';
         }
     @endphp
 
@@ -33,17 +35,17 @@
         <div class="row g-3">
             <div class="col-md-6">
                 <label class="form-label">Reference produit</label>
-                <input type="text" name="reference" id="reference-input" class="form-control" value="{{ old('reference', $product->reference) }}" placeholder="Ex: COS02001TH">
-                <small class="text-muted">Format: TYPE(3) + GROUPE(2) + NNN(3 global auto) + LIGNE(variable) + SAISON(1)</small>
+                <input type="text" name="reference" id="reference-input" class="form-control" value="{{ old('reference', $product->reference) }}" placeholder="Ex: COS02001TH26">
+                <small class="text-muted">Format: TYPE(3) + GROUPE(2) + NNN(3 global auto) + LIGNE(variable) + SAISON(1) + ANNEE(2)</small>
             </div>
 
             <div class="col-md-6">
                 <label class="form-label">Generation automatique reference</label>
                 <div class="row g-2">
-                    <div class="col-3">
+                    <div class="col-2">
                         <input type="text" name="reference_type" id="reference-type" class="form-control" maxlength="3" placeholder="Type" value="{{ old('reference_type', $refType) }}">
                     </div>
-                    <div class="col-3">
+                    <div class="col-2">
                         <input type="text" name="reference_group" id="reference-group" class="form-control" maxlength="2" placeholder="Groupe" value="{{ old('reference_group', $refGroup) }}">
                     </div>
                     <div class="col-2">
@@ -51,6 +53,9 @@
                     </div>
                     <div class="col-2">
                         <input type="text" name="reference_season" id="reference-season" class="form-control" maxlength="1" placeholder="Saison" value="{{ old('reference_season', $refSeason) }}">
+                    </div>
+                    <div class="col-2">
+                        <input type="text" name="reference_year" id="reference-year" class="form-control" maxlength="2" placeholder="Annee" value="{{ old('reference_year', $refYear) }}">
                     </div>
                     <div class="col-2 d-grid">
                         <button type="button" class="btn btn-outline-primary" id="generate-reference-btn">Generer</button>
@@ -229,13 +234,14 @@ async function generateProductReference() {
     const group = (document.getElementById('reference-group').value || '').trim();
     const line = (document.getElementById('reference-line').value || '').trim().toUpperCase();
     const season = (document.getElementById('reference-season').value || '').trim().toUpperCase();
+    const year = (document.getElementById('reference-year').value || '').trim();
 
-    if (type.length !== 3 || group.length !== 2 || line.length < 1 || season.length !== 1) {
-        alert('Remplissez Type(3), Groupe(2), Ligne(variable), Saison(1).');
+    if (type.length !== 3 || group.length !== 2 || line.length < 1 || season.length !== 1 || year.length !== 2) {
+        alert('Remplissez Type(3), Groupe(2), Ligne(variable), Saison(1), Annee(2).');
         return;
     }
 
-    const params = new URLSearchParams({ type, group, line, season });
+    const params = new URLSearchParams({ type, group, line, season, year });
     const response = await fetch(`${referenceNextUrl}?${params.toString()}`);
     const data = await response.json();
 

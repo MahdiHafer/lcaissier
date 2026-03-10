@@ -7,6 +7,20 @@
         <a href="{{ route('bons-livraison.index') }}" class="btn btn-outline-secondary">Retour</a>
     </div>
 
+    @if(session('error'))
+        <div class="alert alert-danger">{{ session('error') }}</div>
+    @endif
+
+    @if ($errors->any())
+        <div class="alert alert-danger">
+            <ul class="mb-0">
+                @foreach ($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+
     <div class="card p-3 mb-3">
         <div class="row">
             <div class="col-md-3"><strong>Date:</strong> {{ \Carbon\Carbon::parse($bon->date_bon)->format('d/m/Y') }}</div>
@@ -80,30 +94,37 @@
                 <div class="col-md-3">
                     <label class="form-label">Mode de paiement</label>
                     <select name="mode_paiement" class="form-select" id="modePaiement" required>
-                        <option value="Especes">Especes</option>
-                        <option value="Virement">Virement</option>
-                        <option value="Credit">Credit</option>
-                        <option value="Cheque">Cheque</option>
-                        <option value="TPE">TPE</option>
-                        <option value="Avoir">Avoir</option>
+                        <option value="Especes" {{ old('mode_paiement', 'Especes') === 'Especes' ? 'selected' : '' }}>Especes</option>
+                        <option value="Virement" {{ old('mode_paiement') === 'Virement' ? 'selected' : '' }}>Virement</option>
+                        <option value="Credit" {{ old('mode_paiement') === 'Credit' ? 'selected' : '' }}>Credit</option>
+                        <option value="Cheque" {{ old('mode_paiement') === 'Cheque' ? 'selected' : '' }}>Cheque</option>
+                        <option value="TPE" {{ old('mode_paiement') === 'TPE' ? 'selected' : '' }}>TPE</option>
+                        <option value="Avoir" {{ old('mode_paiement') === 'Avoir' ? 'selected' : '' }}>Avoir</option>
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label">TVA %</label>
-                    <input type="number" step="0.01" min="0" max="100" name="tva_rate" id="tvaRateInput" class="form-control" value="20">
+                    <label class="form-label">TVA % (incluse)</label>
+                    <input type="number" step="0.01" min="0" max="100" name="tva_rate" id="tvaRateInput" class="form-control" value="{{ old('tva_rate', 20) }}">
                 </div>
                 <div class="col-md-2">
                     <label class="form-label">Remise</label>
-                    <input type="number" step="0.01" min="0" name="remise" id="remiseInput" class="form-control" value="0">
+                    <input type="number" step="0.01" min="0" name="remise" id="remiseInput" class="form-control" value="{{ old('remise', 0) }}">
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label">Type</label>
+                    <select name="type_remise" id="typeRemiseInput" class="form-select">
+                        <option value="dh" {{ old('type_remise', 'dh') === 'dh' ? 'selected' : '' }}>DH</option>
+                        <option value="%" {{ old('type_remise') === '%' ? 'selected' : '' }}>%</option>
+                    </select>
                 </div>
                 <div class="col-md-3" id="montantPayeWrap" style="display:none;">
                     <label class="form-label">Montant paye (credit)</label>
-                    <input type="number" step="0.01" min="0" name="montant_paye" class="form-control" value="0">
+                    <input type="number" step="0.01" min="0" name="montant_paye" class="form-control" value="{{ old('montant_paye', 0) }}">
                 </div>
                 <div class="col-md-2 text-md-end">
-                    <div><strong>Total HT:</strong> <span id="selectedTotal">0.00</span> DH</div>
+                    <div><strong>Total HT:</strong> <span id="netTotal">0.00</span> DH</div>
                     <div><strong>TVA:</strong> <span id="tvaAmount">0.00</span> DH</div>
-                    <div><strong>TTC:</strong> <span id="netTotal">0.00</span> DH</div>
+                    <div><strong>Total TTC:</strong> <span id="selectedTotal">0.00</span> DH</div>
                 </div>
             </div>
 
@@ -123,6 +144,7 @@ const selectedTotalEl = document.getElementById('selectedTotal');
 const tvaAmountEl = document.getElementById('tvaAmount');
 const netTotalEl = document.getElementById('netTotal');
 const remiseInput = document.getElementById('remiseInput');
+const typeRemiseInput = document.getElementById('typeRemiseInput');
 const tvaRateInput = document.getElementById('tvaRateInput');
 const modePaiement = document.getElementById('modePaiement');
 const montantPayeWrap = document.getElementById('montantPayeWrap');
@@ -151,15 +173,18 @@ function computeTotals() {
         }
     });
 
-    const remise = Number(remiseInput.value || 0);
-    const ht = Math.max(total - remise, 0);
-    const tvaRate = Number(tvaRateInput.value || 0);
+    const tvaRate = Math.max(Number(tvaRateInput.value || 0), 0);
+    const factor = 1 + (tvaRate / 100);
+    const totalHtBase = factor > 0 ? (total / factor) : total;
+    const remiseRaw = Number(remiseInput.value || 0);
+    const remiseHt = typeRemiseInput.value === '%' ? (totalHtBase * (remiseRaw / 100)) : remiseRaw;
+    const ht = Math.max(totalHtBase - remiseHt, 0);
     const tvaAmount = ht * (tvaRate / 100);
     const ttc = ht + tvaAmount;
 
-    selectedTotalEl.textContent = ht.toFixed(2);
+    selectedTotalEl.textContent = ttc.toFixed(2);
     tvaAmountEl.textContent = tvaAmount.toFixed(2);
-    netTotalEl.textContent = ttc.toFixed(2);
+    netTotalEl.textContent = ht.toFixed(2);
 }
 
 checkAll?.addEventListener('change', () => {
@@ -195,6 +220,7 @@ lineChecks.forEach((check) => {
 });
 
 remiseInput.addEventListener('input', computeTotals);
+typeRemiseInput.addEventListener('change', computeTotals);
 tvaRateInput.addEventListener('input', computeTotals);
 
 modePaiement.addEventListener('change', () => {
@@ -210,5 +236,6 @@ document.getElementById('convertForm').addEventListener('submit', (e) => {
 });
 
 computeTotals();
+montantPayeWrap.style.display = modePaiement.value === 'Credit' ? '' : 'none';
 </script>
 @endsection

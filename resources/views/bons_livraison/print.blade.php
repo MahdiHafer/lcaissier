@@ -209,16 +209,21 @@
 </head>
 <body onload="window.print()">
 @php
-    $companyName = env('COMPANY_NAME', config('app.name', "L'CAISSIER"));
-    $companyAddress = env('COMPANY_ADDRESS', 'Adresse entreprise');
-    $companyPhone = env('COMPANY_PHONE', 'Telephone');
-    $companyEmail = env('COMPANY_EMAIL', 'Email');
+    $companyName = $companySettings['name'] ?? env('COMPANY_NAME', config('app.name', "L'CAISSIER"));
+    $companyAddress = $companySettings['address'] ?? env('COMPANY_ADDRESS', 'Adresse entreprise');
+    $companyPhone = $companySettings['phone'] ?? env('COMPANY_PHONE', 'Telephone');
+    $companyEmail = $companySettings['email'] ?? env('COMPANY_EMAIL', 'Email');
+    $companyIce = $companySettings['ice'] ?? env('COMPANY_ICE', '-');
+    $companyRc = $companySettings['rc'] ?? env('COMPANY_RC', env('LEGAL_RC', '-'));
+    $companyIf = $companySettings['if'] ?? env('COMPANY_IF', env('LEGAL_IF', '-'));
+    $companyCnss = $companySettings['cnss'] ?? env('COMPANY_CNSS', env('LEGAL_CNSS', '-'));
+    $companyLogo = $companySettings['logo'] ?? env('COMPANY_LOGO', 'logo.png');
 @endphp
 
     <div class="page-content">
     <div class="header">
         <div class="header-left">
-            <img src="{{ asset('logo.png') }}" alt="Logo" class="logo">
+            <img src="{{ asset($companyLogo) }}" alt="Logo" class="logo">
             <div class="document-title">Bon de livraison</div>
         </div>
         <div class="header-right">
@@ -278,11 +283,11 @@
 
     <div class="total-box">
         <div class="total-line">
-            <span>Sous-total</span>
+            <span>Sous-total TTC</span>
             <strong>{{ number_format($bon->total, 2) }} DH</strong>
         </div>
         <div class="total-line total-final">
-            <span>Total BL</span>
+            <span>Total BL TTC</span>
             <strong>{{ number_format($bon->total, 2) }} DH</strong>
         </div>
     </div>
@@ -294,6 +299,7 @@
 
     <div class="footer">
         <div class="company-name">{{ $companyName }}</div>
+        <div>ICE: {{ $companyIce ?: '-' }} | RC: {{ $companyRc ?: '-' }} | IF: {{ $companyIf ?: '-' }} | CNSS: {{ $companyCnss ?: '-' }}</div>
         <div>{{ $companyAddress }}</div>
         <div>{{ $companyPhone }} @if(!empty($companyEmail)) | {{ $companyEmail }} @endif</div>
     </div>

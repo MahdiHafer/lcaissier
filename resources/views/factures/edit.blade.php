@@ -28,8 +28,19 @@
                 @endif
             </div>
             <div class="col-md-2">
-                <label class="form-label">TVA %</label>
+                <label class="form-label">TVA % (incluse)</label>
                 <input type="number" step="0.01" min="0" max="100" name="tva_rate" class="form-control" value="{{ old('tva_rate', $facture->tva_rate) }}" required>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Remise</label>
+                <input type="number" step="0.01" min="0" name="remise_value" class="form-control" value="{{ old('remise_value', $facture->remise_value ?? 0) }}">
+            </div>
+            <div class="col-md-1">
+                <label class="form-label">Type</label>
+                <select name="remise_type" class="form-select">
+                    <option value="dh" {{ old('remise_type', $facture->remise_type ?? 'dh') === 'dh' ? 'selected' : '' }}>DH</option>
+                    <option value="%" {{ old('remise_type', $facture->remise_type ?? 'dh') === '%' ? 'selected' : '' }}>%</option>
+                </select>
             </div>
 
             <div class="col-md-3">

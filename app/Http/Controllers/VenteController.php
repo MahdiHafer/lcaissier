@@ -18,6 +18,7 @@ class VenteController extends Controller
     public function index()
     {
         $products = Product::with('category')
+            ->where('quantite', '>', 0)
             ->orderByDesc('created_at')
             ->take(200)
             ->get();
@@ -150,6 +151,79 @@ class VenteController extends Controller
         ], $this->buildCartPayload($cart)));
     }
 
+    public function searchProducts(Request $request)
+    {
+        $term = trim((string) $request->input('q', ''));
+        $categoryId = $request->input('category_id');
+
+        if (mb_strlen($term) < 2) {
+            return response()->json(['products' => []]);
+        }
+
+        $products = Product::with('category')
+            ->where('quantite', '>', 0)
+            ->when(!empty($categoryId) && $categoryId !== 'all', function ($q) use ($categoryId) {
+                $q->where('category_id', $categoryId);
+            })
+            ->where(function ($q) use ($term) {
+                $q->where('marque', 'like', '%' . $term . '%')
+                    ->orWhere('modele', 'like', '%' . $term . '%')
+                    ->orWhere('codebar', 'like', '%' . $term . '%')
+                    ->orWhere('reference', 'like', '%' . $term . '%');
+            })
+            ->orderByDesc('created_at')
+            ->limit(12)
+            ->get()
+            ->map(function ($p) {
+                return [
+                    'id' => $p->id,
+                    'name' => trim((string) $p->marque . ' ' . (string) $p->modele),
+                    'codebar' => $p->codebar,
+                    'reference' => $p->reference,
+                    'price' => (float) $p->prix_vente,
+                    'stock' => (int) $p->quantite,
+                    'category' => optional($p->category)->name ?: ($p->categorie ?: 'Produit'),
+                    'image' => $p->image ? asset($p->image) : null,
+                    'has_variants' => (bool) $p->has_variants,
+                ];
+            })
+            ->values();
+
+        return response()->json(['products' => $products]);
+    }
+
+    public function searchClients(Request $request)
+    {
+        $term = trim((string) $request->input('q', ''));
+
+        if (mb_strlen($term) < 2) {
+            return response()->json(['clients' => []]);
+        }
+
+        $clients = Client::query()
+            ->where(function ($q) use ($term) {
+                $q->where('nom', 'like', '%' . $term . '%')
+                    ->orWhere('telephone', 'like', '%' . $term . '%')
+                    ->orWhere('societe', 'like', '%' . $term . '%')
+                    ->orWhere('ice', 'like', '%' . $term . '%');
+            })
+            ->orderByDesc('id')
+            ->limit(10)
+            ->get(['id', 'nom', 'telephone', 'societe', 'ice'])
+            ->map(function ($c) {
+                return [
+                    'id' => $c->id,
+                    'nom' => $c->nom,
+                    'telephone' => $c->telephone,
+                    'societe' => $c->societe,
+                    'ice' => $c->ice,
+                ];
+            })
+            ->values();
+
+        return response()->json(['clients' => $clients]);
+    }
+
     public function validerVente(Request $request)
     {
         Log::info('Debut validation vente', $request->all());
@@ -157,6 +231,7 @@ class VenteController extends Controller
         $request->validate([
             'mode_paiement' => 'required|string',
             'total' => 'required|numeric',
+            'selected_client_id' => 'nullable|exists:clients,id',
         ]);
 
         $isComptoir = $request->comptoir == 1;
@@ -176,11 +251,25 @@ class VenteController extends Controller
 
         if ($isComptoir) {
             $client = null;
+        } elseif (!empty($request->selected_client_id)) {
+            $client = Client::find($request->selected_client_id);
         } else {
-            $client = Client::firstOrCreate(
-                ['telephone' => $request->new_client_telephone],
-                ['nom' => $request->new_client_nom]
-            );
+            $nom = trim((string) $request->new_client_nom);
+            $telephone = trim((string) $request->new_client_telephone);
+
+            if ($nom === '' && $telephone === '') {
+                $client = null;
+            } elseif ($telephone !== '') {
+                $client = Client::firstOrCreate(
+                    ['telephone' => $telephone],
+                    ['nom' => $nom !== '' ? $nom : 'Client']
+                );
+            } else {
+                $client = Client::create([
+                    'nom' => $nom,
+                    'telephone' => null,
+                ]);
+            }
         }
 
         DB::beginTransaction();
@@ -539,8 +628,8 @@ class VenteController extends Controller
 
     public function dashboard(Request $request)
     {
-        if (auth()->user()->role !== 'admin') {
-            return redirect('/login');
+        if (!auth()->user()->hasPermission('dashboard.view')) {
+            abort(403, 'Acces refuse');
         }
 
         $start = $request->input('start');
@@ -586,9 +675,15 @@ class VenteController extends Controller
         }
 
         $total_remise = $ventes->sum('remise');
+        $ventes_count = $ventes->count();
 
         $ca_net = $ca_brut - $total_remise;
         $marge = $ca_net - $cout_total;
+        $ticket_moyen = $ventes_count > 0 ? ($ca_net / $ventes_count) : 0;
+        $credits_restants = $ventes->reduce(function ($carry, $vente) {
+            $rest = (float) $vente->net_a_payer - (float) $vente->montant_paye;
+            return $carry + max($rest, 0);
+        }, 0);
 
         $topProduits = collect($produits)
             ->sortByDesc('quantite')
@@ -605,16 +700,48 @@ class VenteController extends Controller
             ->orderBy('categorie')
             ->get();
 
+        $ventesParJour = $ventes
+            ->groupBy(function ($vente) {
+                return $vente->created_at->format('Y-m-d');
+            })
+            ->map(function ($group) {
+                return round((float) $group->sum('net_a_payer'), 2);
+            })
+            ->sortKeys();
+
+        $paiementsBreakdown = $ventes
+            ->groupBy('mode_paiement')
+            ->map(function ($group) {
+                return round((float) $group->sum('net_a_payer'), 2);
+            })
+            ->sortKeys();
+
+        $topProduitsChart = $topProduits->take(8)->values()->map(function ($produit) {
+            return [
+                'designation' => (string) ($produit['designation'] ?? '-'),
+                'quantite' => (int) ($produit['quantite'] ?? 0),
+                'ca' => round((float) ($produit['ca'] ?? 0), 2),
+            ];
+        });
+
         return view('dashboard', compact(
             'ventes',
             'ca_net',
+            'ca_brut',
+            'total_remise',
             'marge',
             'topProduits',
             'start',
             'end',
             'valeur_stock',
             'total_articles',
-            'valeur_stock_par_categorie'
+            'valeur_stock_par_categorie',
+            'ventes_count',
+            'ticket_moyen',
+            'credits_restants',
+            'ventesParJour',
+            'paiementsBreakdown',
+            'topProduitsChart'
         ));
     }
 

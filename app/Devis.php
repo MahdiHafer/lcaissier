@@ -27,4 +27,9 @@ class Devis extends Model
     {
         return $this->belongsTo(Client::class, 'client_id');
     }
+
+    public function factures()
+    {
+        return $this->hasMany(Facture::class, 'devis_id');
+    }
 }

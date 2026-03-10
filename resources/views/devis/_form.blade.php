@@ -71,13 +71,19 @@
 @push('scripts')
 @php
     $productsCatalogData = $products->map(function ($p) {
+        $designation = trim($p->marque . ' ' . $p->modele);
+        $codebar = trim((string) ($p->codebar ?? ''));
+        $reference = trim((string) ($p->reference ?? ''));
         return [
             'id' => $p->id,
-            'label' => trim($p->marque . ' ' . $p->modele . ($p->codebar ? ' [' . $p->codebar . ']' : '')),
-            'designation' => trim($p->marque . ' ' . $p->modele),
+            'designation' => $designation,
+            'codebar' => $codebar,
+            'reference' => $reference,
+            'display' => trim($designation . ($reference !== '' ? ' | REF: ' . $reference : '') . ($codebar !== '' ? ' | CB: ' . $codebar : '')),
             'image' => $p->image ? asset($p->image) : '',
             'image_path' => $p->image ?: '',
-            'prix' => (float) $p->prix_vente,
+            'prix' => (float) ($p->prix_vente_ttc ?? $p->prix_vente),
+            'search' => strtolower(trim($designation . ' ' . $reference . ' ' . $codebar)),
         ];
     })->values();
 
@@ -114,19 +120,35 @@ const existingLines = @json($existingLinesData);
 const tbody = document.getElementById('devis-lines-body');
 const grandTotalEl = document.getElementById('devis-grand-total');
 
-function productOptionsHtml(selectedId) {
-    const options = ['<option value="">Selectionner...</option>'];
+function productDatalistOptionsHtml() {
+    const options = [];
     productsCatalog.forEach((p) => {
-        options.push(`<option value="${p.id}" ${String(selectedId) === String(p.id) ? 'selected' : ''}>${p.label}</option>`);
+        options.push(`<option value="${p.display}" data-id="${p.id}"></option>`);
     });
     return options.join('');
 }
 
+function findProductByQuery(query) {
+    const q = String(query || '').trim().toLowerCase();
+    if (!q) return null;
+
+    let picked = productsCatalog.find((p) => p.display.toLowerCase() === q);
+    if (picked) return picked;
+    picked = productsCatalog.find((p) => String(p.codebar || '').toLowerCase() === q);
+    if (picked) return picked;
+    picked = productsCatalog.find((p) => String(p.reference || '').toLowerCase() === q);
+    if (picked) return picked;
+    return productsCatalog.find((p) => String(p.search || '').includes(q)) || null;
+}
+
 function createLine(line = {}) {
+    const datalistId = `devis-products-list-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
     const tr = document.createElement('tr');
     tr.innerHTML = `
         <td>
-            <select name="product_id[]" class="form-select line-product">${productOptionsHtml(line.product_id || '')}</select>
+            <input type="hidden" name="product_id[]" class="line-product-id" value="${line.product_id || ''}">
+            <input type="text" class="form-control line-product-search" list="${datalistId}" placeholder="Code-barres, reference ou designation">
+            <datalist id="${datalistId}">${productDatalistOptionsHtml()}</datalist>
         </td>
         <td>
             <input type="hidden" name="image[]" class="line-image-path" value="${line.image_path || ''}">
@@ -141,7 +163,8 @@ function createLine(line = {}) {
     `;
     tbody.appendChild(tr);
 
-    const productSelect = tr.querySelector('.line-product');
+    const productIdInput = tr.querySelector('.line-product-id');
+    const productSearchInput = tr.querySelector('.line-product-search');
     const designationInput = tr.querySelector('.line-designation');
     const priceInput = tr.querySelector('.line-price');
     const qtyInput = tr.querySelector('.line-qty');
@@ -150,11 +173,12 @@ function createLine(line = {}) {
     const imagePathInput = tr.querySelector('.line-image-path');
     const lineTotalInput = tr.querySelector('.line-total');
 
-    productSelect.addEventListener('change', () => {
-        const picked = productsCatalog.find((p) => String(p.id) === String(productSelect.value));
+    function applyPickedProduct(picked) {
         if (!picked) return;
+        productIdInput.value = picked.id;
+        productSearchInput.value = picked.display;
 
-        designationInput.value = picked.designation || picked.label;
+        designationInput.value = picked.designation || picked.display;
         if (!priceInput.value || Number(priceInput.value) === 0) {
             priceInput.value = Number(picked.prix || 0).toFixed(2);
         }
@@ -168,6 +192,22 @@ function createLine(line = {}) {
             imageEmpty.style.display = '';
         }
         recalcLine(tr);
+    }
+
+    function resolveProductFromInput() {
+        const picked = findProductByQuery(productSearchInput.value);
+        if (picked) {
+            applyPickedProduct(picked);
+        }
+    }
+
+    productSearchInput.addEventListener('change', resolveProductFromInput);
+    productSearchInput.addEventListener('blur', resolveProductFromInput);
+    productSearchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            resolveProductFromInput();
+        }
     });
 
     function recalcLine(currentTr) {
@@ -185,6 +225,13 @@ function createLine(line = {}) {
         tr.remove();
         recalcGrandTotal();
     });
+
+    if (line.product_id) {
+        const picked = productsCatalog.find((p) => String(p.id) === String(line.product_id));
+        if (picked) {
+            productSearchInput.value = picked.display;
+        }
+    }
 
     recalcLine(tr);
 }

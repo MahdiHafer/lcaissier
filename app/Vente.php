@@ -26,4 +26,9 @@ class Vente extends Model
         return $this->hasMany(Avoir::class, 'vente_id');
     }
 
+    public function factures()
+    {
+        return $this->hasMany(Facture::class, 'vente_id');
+    }
+
 }

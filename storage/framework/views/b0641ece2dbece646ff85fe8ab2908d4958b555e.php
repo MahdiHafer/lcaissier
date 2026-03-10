@@ -56,6 +56,66 @@ body {
     box-shadow: 0 0 0 3px rgba(15, 157, 100, .15);
 }
 
+.scan-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.scan-actions {
+    display: flex;
+    gap: 6px;
+    flex: 0 0 auto;
+}
+
+.live-wrap {
+    position: relative;
+}
+
+.live-list {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: 0 14px 28px rgba(8, 26, 18, .12);
+    max-height: 300px;
+    overflow: auto;
+    z-index: 40;
+    display: none;
+}
+
+.live-list.show {
+    display: block;
+}
+
+.live-item {
+    padding: 10px 12px;
+    border-bottom: 1px solid #eef3ef;
+    cursor: pointer;
+}
+
+.live-item:last-child {
+    border-bottom: 0;
+}
+
+.live-item:hover {
+    background: #f5fbf8;
+}
+
+.live-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.live-sub {
+    font-size: 12px;
+    color: var(--muted);
+}
+
 .chips {
     display: flex;
     flex-wrap: wrap;
@@ -406,7 +466,16 @@ body {
     <div class="pos-shell">
         <section class="pos-card">
             <div class="catalog-header">
-                <input type="text" id="code-scan" class="form-control scan-input" placeholder="Scanner code-barres ou rechercher un produit...">
+                <div class="live-wrap">
+                    <div class="scan-row">
+                        <input type="text" id="code-scan" class="form-control scan-input" placeholder="Scanner code-barres ou rechercher un produit..." inputmode="search" enterkeyhint="search" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+                        <div class="scan-actions">
+                            <button type="button" id="scanSearchBtn" class="btn btn-success btn-pill">Rechercher</button>
+                            <button type="button" id="scanClearBtn" class="btn btn-outline-secondary btn-pill">Vider</button>
+                        </div>
+                    </div>
+                    <div id="productLiveList" class="live-list" aria-label="Resultats produits"></div>
+                </div>
                 <div class="chips" id="categoryChips">
                     <button class="chip active" type="button" data-category="all">Tout</button>
                     <?php $__currentLoopData = $categories; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $category): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
@@ -457,7 +526,7 @@ body {
 
             <section class="pos-card">
                 <div class="summary">
-                    <form method="POST" action="<?php echo e(route('caisse.valider')); ?>">
+                    <form method="POST" action="<?php echo e(route('caisse.valider')); ?>" id="checkoutForm">
                         <?php echo csrf_field(); ?>
                         <div class="total-wrap">
                             <div class="small text-muted">Total</div>
@@ -488,8 +557,13 @@ body {
                         </div>
 
                         <div id="client-fields" style="display:none;">
-                            <div class="mb-2"><input type="text" name="new_client_nom" class="form-control" placeholder="Nom client"></div>
-                            <div class="mb-2"><input type="text" name="new_client_telephone" class="form-control" placeholder="Telephone client"></div>
+                            <div class="mb-2 live-wrap">
+                                <input type="text" id="client-search" class="form-control" placeholder="Rechercher client (nom, tel, societe, ICE)">
+                                <div id="clientLiveList" class="live-list" aria-label="Resultats clients"></div>
+                            </div>
+                            <div class="mb-2"><input type="text" name="new_client_nom" id="client-name-input" class="form-control" placeholder="Nom client"></div>
+                            <div class="mb-2"><input type="text" name="new_client_telephone" id="client-phone-input" class="form-control" placeholder="Telephone client"></div>
+                            <input type="hidden" name="selected_client_id" id="selected-client-id" value="">
                         </div>
                         <input type="hidden" name="comptoir" id="comptoir-input" value="1">
 
@@ -510,8 +584,8 @@ body {
                         </div>
 
                         <div class="d-grid gap-2">
-                            <a href="<?php echo e(route('caisse.imprimer')); ?>" target="_blank" class="btn btn-outline-secondary btn-pill" id="print-btn">Imprimer</a>
-                            <button type="submit" class="btn btn-success btn-pill">Valider la vente</button>
+                            <button type="submit" class="btn btn-success btn-pill" id="validatePrintBtn" name="submit_action" value="validate_print">Valider + Imprimer</button>
+                            <button type="submit" class="btn btn-outline-success btn-pill" id="validateOnlyBtn" name="submit_action" value="validate_only">Valider la vente</button>
                         </div>
                     </form>
                 </div>
@@ -542,8 +616,13 @@ const addUrl = "<?php echo e(route('caisse.add')); ?>";
 const clearUrl = "<?php echo e(route('caisse.vider')); ?>";
 const toggleBase = "<?php echo e(url('/caisse/toggle-retour')); ?>";
 const removeBase = "<?php echo e(url('/caisse/remove')); ?>";
+const productSearchUrl = "<?php echo e(route('caisse.searchProducts')); ?>";
+const clientSearchUrl = "<?php echo e(route('caisse.searchClients')); ?>";
 
 const scanner = document.getElementById('code-scan');
+const scanSearchBtn = document.getElementById('scanSearchBtn');
+const scanClearBtn = document.getElementById('scanClearBtn');
+const productLiveList = document.getElementById('productLiveList');
 const cards = Array.from(document.querySelectorAll('.product-card'));
 const chips = Array.from(document.querySelectorAll('.chip'));
 const cartList = document.getElementById('cartList');
@@ -560,9 +639,26 @@ const closeVariantModal = document.getElementById('closeVariantModal');
 
 let cartState = <?php echo json_encode(session('panier', []), 512) ?>;
 let pendingVariantPayload = null;
-const companyName = <?php echo json_encode(config('app.name'), 15, 512) ?>;
+const companyName = <?php echo json_encode($companySettings['name'] ?? config('app.name'), 15, 512) ?>;
+const companyAddress = <?php echo json_encode($companySettings['address'] ?? null, 15, 512) ?>;
+const companyPhone = <?php echo json_encode($companySettings['phone'] ?? null, 15, 512) ?>;
+const companyEmail = <?php echo json_encode($companySettings['email'] ?? null, 15, 512) ?>;
+const companyIce = <?php echo json_encode($companySettings['ice'] ?? null, 15, 512) ?>;
+const clientSearchInput = document.getElementById('client-search');
+const clientLiveList = document.getElementById('clientLiveList');
+const clientNameInput = document.getElementById('client-name-input');
+const clientPhoneInput = document.getElementById('client-phone-input');
+const selectedClientIdInput = document.getElementById('selected-client-id');
 
-scanner.focus();
+const isTouchDevice = window.matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+
+function focusScanner() {
+    if (!isTouchDevice) {
+        scanner.focus();
+    }
+}
+
+focusScanner();
 
 function money(n) {
     return `${Number(n).toFixed(2)} DH`;
@@ -577,6 +673,14 @@ function showToast(message) {
     toastPos.classList.add('show');
     window.clearTimeout(showToast._timer);
     showToast._timer = window.setTimeout(() => toastPos.classList.remove('show'), 1200);
+}
+
+function debounce(fn, wait = 220) {
+    let timer = null;
+    return (...args) => {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => fn(...args), wait);
+    };
 }
 
 function computeCartTotal() {
@@ -695,21 +799,66 @@ cards.forEach((card) => {
     });
 });
 
+async function handleScanSubmit() {
+    const value = scanner.value.trim();
+    if (!value) {
+        focusScanner();
+        return;
+    }
+
+    const firstLiveItem = productLiveList.querySelector('.live-item');
+    if (firstLiveItem && !/^\d{8,}$/.test(value)) {
+        const firstProductId = Number(firstLiveItem.dataset.productId || 0);
+        if (firstProductId > 0) {
+            try {
+                await addToCart({ product_id: firstProductId });
+                scanner.value = '';
+                productLiveList.classList.remove('show');
+                filterCatalog();
+                focusScanner();
+                return;
+            } catch (e3) {
+                scanner.value = '';
+                productLiveList.classList.remove('show');
+                filterCatalog();
+                showToast(e3.message);
+                focusScanner();
+                return;
+            }
+        }
+    }
+
+    try {
+        await addToCart({ code: value });
+        scanner.value = '';
+        productLiveList.classList.remove('show');
+        filterCatalog();
+    } catch (e2) {
+        scanner.value = '';
+        productLiveList.classList.remove('show');
+        filterCatalog();
+        showToast('Produit non trouve');
+    }
+    focusScanner();
+}
+
 scanner.addEventListener('keypress', async function(e) {
     if (e.key === 'Enter') {
         e.preventDefault();
-        const value = this.value.trim();
-        if (!value) return;
-
-        try {
-            await addToCart({ code: value });
-            scanner.value = '';
-            filterCatalog();
-        } catch (e2) {
-            filterCatalog();
-            showToast('Produit non trouve');
-        }
+        await handleScanSubmit();
     }
+});
+
+scanSearchBtn.addEventListener('click', async () => {
+    await handleScanSubmit();
+});
+
+scanClearBtn.addEventListener('click', () => {
+    scanner.value = '';
+    productLiveList.classList.remove('show');
+    productLiveList.innerHTML = '';
+    filterCatalog();
+    focusScanner();
 });
 
 function filterCatalog() {
@@ -723,6 +872,54 @@ function filterCatalog() {
         card.style.display = (matchesText && matchesCategory) ? '' : 'none';
     });
 }
+
+function getActiveCategory() {
+    const activeChip = document.querySelector('.chip.active');
+    return activeChip ? activeChip.dataset.category : 'all';
+}
+
+function renderProductLive(products) {
+    if (!Array.isArray(products) || !products.length) {
+        productLiveList.innerHTML = '';
+        productLiveList.classList.remove('show');
+        return;
+    }
+
+    productLiveList.innerHTML = products.map((p) => `
+        <div class="live-item" data-product-id="${p.id}">
+            <div class="live-title">${escapeHtml(p.name || 'Produit')}</div>
+            <div class="live-sub">
+                Ref: ${escapeHtml(p.reference || '-')} | Code: ${escapeHtml(p.codebar || '-')} | ${Number(p.price || 0).toFixed(2)} DH | Stock ${Number(p.stock || 0)}
+            </div>
+        </div>
+    `).join('');
+    productLiveList.classList.add('show');
+}
+
+const fetchProductLive = debounce(async () => {
+    const q = scanner.value.trim();
+    if (q.length < 2) {
+        productLiveList.classList.remove('show');
+        productLiveList.innerHTML = '';
+        return;
+    }
+
+    try {
+        const url = new URL(productSearchUrl, window.location.origin);
+        url.searchParams.set('q', q);
+        url.searchParams.set('category_id', getActiveCategory());
+
+        const res = await fetch(url.toString(), { headers: { 'Accept': 'application/json' } });
+        if (!res.ok) {
+            productLiveList.classList.remove('show');
+            return;
+        }
+        const data = await res.json();
+        renderProductLive(data.products || []);
+    } catch (_) {
+        productLiveList.classList.remove('show');
+    }
+}, 180);
 
 function openVariantModal(data, payload) {
     pendingVariantPayload = payload;
@@ -760,13 +957,32 @@ function closeVariantPopup() {
 }
 
 scanner.addEventListener('input', filterCatalog);
+scanner.addEventListener('input', fetchProductLive);
 
 chips.forEach(chip => {
     chip.addEventListener('click', () => {
         chips.forEach(c => c.classList.remove('active'));
         chip.classList.add('active');
         filterCatalog();
+        fetchProductLive();
     });
+});
+
+productLiveList.addEventListener('click', async (e) => {
+    const row = e.target.closest('.live-item');
+    if (!row) return;
+    const productId = Number(row.dataset.productId || 0);
+    if (productId <= 0) return;
+
+    try {
+        await addToCart({ product_id: productId });
+        scanner.value = '';
+        filterCatalog();
+        productLiveList.classList.remove('show');
+        focusScanner();
+    } catch (err) {
+        showToast(err.message);
+    }
 });
 
 variantList.addEventListener('click', async (e) => {
@@ -845,6 +1061,96 @@ document.getElementById('clientSwitch').addEventListener('change', function () {
     const comptoir = document.getElementById('comptoir-input');
     fields.style.display = this.checked ? 'block' : 'none';
     comptoir.value = this.checked ? 0 : 1;
+
+    if (!this.checked) {
+        if (clientSearchInput) clientSearchInput.value = '';
+        if (clientNameInput) clientNameInput.value = '';
+        if (clientPhoneInput) clientPhoneInput.value = '';
+        if (selectedClientIdInput) selectedClientIdInput.value = '';
+        if (clientLiveList) clientLiveList.classList.remove('show');
+    }
+});
+
+function renderClientLive(clients) {
+    if (!Array.isArray(clients) || !clients.length) {
+        clientLiveList.innerHTML = '';
+        clientLiveList.classList.remove('show');
+        return;
+    }
+
+    clientLiveList.innerHTML = clients.map((c) => `
+        <div class="live-item" data-client-id="${c.id}" data-client-name="${encodeURIComponent(c.nom || '')}" data-client-phone="${encodeURIComponent(c.telephone || '')}">
+            <div class="live-title">${escapeHtml(c.nom || 'Client')}</div>
+            <div class="live-sub">${escapeHtml(c.telephone || '-')} | ${escapeHtml(c.societe || '-')} | ICE ${escapeHtml(c.ice || '-')}</div>
+        </div>
+    `).join('');
+    clientLiveList.classList.add('show');
+}
+
+const fetchClientLive = debounce(async () => {
+    if (!clientSearchInput || !clientLiveList) return;
+    const q = clientSearchInput.value.trim();
+    if (q.length < 2) {
+        clientLiveList.classList.remove('show');
+        clientLiveList.innerHTML = '';
+        return;
+    }
+
+    try {
+        const url = new URL(clientSearchUrl, window.location.origin);
+        url.searchParams.set('q', q);
+        const res = await fetch(url.toString(), { headers: { 'Accept': 'application/json' } });
+        if (!res.ok) {
+            clientLiveList.classList.remove('show');
+            return;
+        }
+        const data = await res.json();
+        renderClientLive(data.clients || []);
+    } catch (_) {
+        clientLiveList.classList.remove('show');
+    }
+}, 180);
+
+if (clientSearchInput) {
+    clientSearchInput.addEventListener('input', () => {
+        if (selectedClientIdInput) selectedClientIdInput.value = '';
+        fetchClientLive();
+    });
+}
+
+if (clientNameInput) {
+    clientNameInput.addEventListener('input', () => {
+        if (selectedClientIdInput) selectedClientIdInput.value = '';
+    });
+}
+
+if (clientPhoneInput) {
+    clientPhoneInput.addEventListener('input', () => {
+        if (selectedClientIdInput) selectedClientIdInput.value = '';
+    });
+}
+
+if (clientLiveList) {
+    clientLiveList.addEventListener('click', (e) => {
+        const row = e.target.closest('.live-item');
+        if (!row) return;
+        const id = row.dataset.clientId || '';
+        const nom = decodeURIComponent(row.dataset.clientName || '');
+        const phone = decodeURIComponent(row.dataset.clientPhone || '');
+
+        if (selectedClientIdInput) selectedClientIdInput.value = id;
+        if (clientNameInput) clientNameInput.value = nom;
+        if (clientPhoneInput) clientPhoneInput.value = phone;
+        if (clientSearchInput) clientSearchInput.value = `${nom}${phone ? ' - ' + phone : ''}`;
+        clientLiveList.classList.remove('show');
+    });
+}
+
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.live-wrap')) {
+        productLiveList.classList.remove('show');
+        if (clientLiveList) clientLiveList.classList.remove('show');
+    }
 });
 
 function getTicketInfosPayload() {
@@ -876,11 +1182,6 @@ function storeTicketInfos() {
     }).then(res => res.json());
 }
 
-document.getElementById('print-btn').addEventListener('click', function (e) {
-    e.preventDefault();
-    printDirectThermal();
-});
-
 function sanitizeText(text) {
     return (text || '')
         .normalize('NFD')
@@ -896,49 +1197,6 @@ function leftRight(left, right, width = 42) {
         return `${l}\n${' '.repeat(Math.max(0, width - r.length))}${r}`;
     }
     return l + ' '.repeat(width - l.length - r.length) + r;
-}
-
-function buildReceiptText() {
-    const lines = [];
-    const now = new Date();
-    const payload = getTicketInfosPayload();
-    const totals = computeCartTotal();
-    const total = Number(totals.total || 0);
-    const net = Number(payload.net_a_payer || total);
-
-    lines.push(sanitizeText(companyName || "L'CAISSIER"));
-    lines.push(now.toLocaleString('fr-FR'));
-    lines.push('-'.repeat(42));
-
-    if (payload.nom) lines.push(`Client: ${sanitizeText(payload.nom)}`);
-    if (payload.telephone) lines.push(`Tel: ${sanitizeText(payload.telephone)}`);
-    if (payload.nom || payload.telephone) lines.push('-'.repeat(42));
-
-    Object.values(cartState).forEach((item) => {
-        const name = sanitizeText(item.nom || 'Produit');
-        const ref = sanitizeText(item.reference || '');
-        const qty = Number(item.quantite || 0);
-        const unit = Number(item.prix || 0);
-        const lineTotal = qty * unit;
-        lines.push(name);
-        if (ref) lines.push(`Ref: ${ref}`);
-        if (item.variant_label) lines.push(`Var: ${sanitizeText(item.variant_label)}`);
-        lines.push(leftRight(`${qty} x ${unit.toFixed(2)}`, `${lineTotal.toFixed(2)} DH`));
-        lines.push('');
-    });
-
-    lines.push('-'.repeat(42));
-    lines.push(leftRight('TOTAL', `${total.toFixed(2)} DH`));
-    if (Number(payload.remise || 0) > 0) {
-        const remiseLabel = payload.type_remise === '%' ? `${payload.remise}%` : `${Number(payload.remise).toFixed(2)} DH`;
-        lines.push(leftRight('Remise', remiseLabel));
-    }
-    lines.push(leftRight('NET', `${net.toFixed(2)} DH`));
-    if (payload.mode) lines.push(leftRight('Paiement', sanitizeText(payload.mode)));
-    lines.push('-'.repeat(42));
-    lines.push('Merci pour votre visite');
-    lines.push('\n\n\n');
-    return lines.join('\n');
 }
 
 function bytesFromText(text) {
@@ -965,13 +1223,94 @@ function toBase64(bytes) {
     return btoa(binary);
 }
 
+const RECEIPT_WIDTH = 48;
+
+function centerText(text, width = RECEIPT_WIDTH) {
+    const t = sanitizeText(text);
+    if (!t) return '';
+    if (t.length >= width) return t.slice(0, width);
+    const leftPad = Math.floor((width - t.length) / 2);
+    return `${' '.repeat(leftPad)}${t}`;
+}
+
+function trimLine(text, max = 40) {
+    const t = sanitizeText(text);
+    return t.length > max ? `${t.slice(0, max - 1)}.` : t;
+}
+
+function hr(char = '-') {
+    return char.repeat(RECEIPT_WIDTH);
+}
+
 function buildEscPosPayload() {
+    const now = new Date();
+    const payload = getTicketInfosPayload();
+    const totals = computeCartTotal();
+    const total = Number(totals.total || 0);
+    const net = Number(payload.net_a_payer || total);
+    const remiseValue = Number(payload.remise || 0);
+    const hasRemise = remiseValue > 0;
+
     const init = new Uint8Array([0x1B, 0x40]);
     const alignCenter = new Uint8Array([0x1B, 0x61, 0x01]);
     const alignLeft = new Uint8Array([0x1B, 0x61, 0x00]);
+    const boldOn = new Uint8Array([0x1B, 0x45, 0x01]);
+    const boldOff = new Uint8Array([0x1B, 0x45, 0x00]);
+    const sizeNormal = new Uint8Array([0x1D, 0x21, 0x00]);
+    const sizeWide = new Uint8Array([0x1D, 0x21, 0x11]);
     const cut = new Uint8Array([0x1D, 0x56, 0x42, 0x00]);
-    const body = bytesFromText(buildReceiptText());
-    return concatBytes(init, alignCenter, alignLeft, body, cut);
+    const nl = (text = '') => bytesFromText(`${text}\n`);
+
+    const chunks = [init];
+
+    chunks.push(alignCenter, boldOn, sizeWide, nl(sanitizeText(companyName || 'Societe')), sizeNormal, boldOff);
+    if (companyAddress) chunks.push(nl(sanitizeText(companyAddress)));
+    if (companyPhone || companyEmail) {
+        chunks.push(nl(sanitizeText(`${companyPhone || '-'}${companyEmail ? ` | ${companyEmail}` : ''}`)));
+    }
+    if (companyIce) chunks.push(nl(`ICE: ${sanitizeText(companyIce)}`));
+    chunks.push(nl(now.toLocaleString('fr-FR')));
+    chunks.push(alignLeft, nl(hr('=')));
+
+    chunks.push(alignCenter, boldOn, nl('TICKET DE CAISSE'), boldOff);
+    chunks.push(alignLeft, nl(hr('-')));
+
+    if (payload.nom || payload.telephone) {
+        chunks.push(boldOn, nl('CLIENT'), boldOff);
+        if (payload.nom) chunks.push(nl(`Nom : ${sanitizeText(payload.nom)}`));
+        if (payload.telephone) chunks.push(nl(`Tel : ${sanitizeText(payload.telephone)}`));
+        chunks.push(nl(hr('-')));
+    }
+
+    chunks.push(boldOn, nl(leftRight('Article', 'Total', RECEIPT_WIDTH)), boldOff);
+    chunks.push(nl(hr('-')));
+
+    Object.values(cartState).forEach((item) => {
+        const name = trimLine(item.nom || 'Produit');
+        const ref = sanitizeText(item.reference || '');
+        const qty = Number(item.quantite || 0);
+        const unit = Number(item.prix || 0);
+        const lineTotal = qty * unit;
+
+        chunks.push(boldOn, nl(name), boldOff);
+        if (ref) chunks.push(nl(`Ref: ${trimLine(ref, 36)}`));
+        if (item.variant_label) chunks.push(nl(`Var: ${trimLine(item.variant_label, 36)}`));
+        chunks.push(nl(leftRight(`${qty} x ${unit.toFixed(2)}`, `${lineTotal.toFixed(2)} DH`, RECEIPT_WIDTH)));
+        chunks.push(nl());
+    });
+
+    chunks.push(nl(hr('=')));
+    chunks.push(boldOn, nl(leftRight('TOTAL BRUT', `${total.toFixed(2)} DH`, RECEIPT_WIDTH)), boldOff);
+    if (hasRemise) {
+        const remiseLabel = payload.type_remise === '%' ? `${payload.remise}%` : `${remiseValue.toFixed(2)} DH`;
+        chunks.push(nl(leftRight('REMISE', remiseLabel, RECEIPT_WIDTH)));
+    }
+    chunks.push(alignCenter, boldOn, nl(`NET A PAYER: ${net.toFixed(2)} DH`), boldOff, alignLeft);
+    if (payload.mode) chunks.push(nl(leftRight('Paiement', sanitizeText(payload.mode), RECEIPT_WIDTH)));
+    chunks.push(nl(hr('-')));
+    chunks.push(alignCenter, nl('Merci pour votre confiance'), nl('A bientot'));
+
+    return concatBytes(...chunks, nl('\n\n'), cut);
 }
 
 function isAndroid() {
@@ -1039,8 +1378,71 @@ async function printDirectThermal() {
         showToast('Erreur sauvegarde infos ticket');
         return;
     }
+    try {
+        if (window.AndroidPrinter) {
+            const bytes = buildEscPosPayload();
+            const payloadB64 = toBase64(bytes);
+
+            if (typeof window.AndroidPrinter.printEscPosStatus === 'function') {
+                const status = String(window.AndroidPrinter.printEscPosStatus(payloadB64) || '');
+                if (status.startsWith('OK|')) {
+                    showToast(status.slice(3) || 'Ticket envoye');
+                } else if (status.startsWith('ERR|')) {
+                    showToast(status.slice(4) || 'Erreur impression');
+                } else {
+                    showToast(status || 'Erreur impression');
+                }
+                return;
+            }
+
+            if (typeof window.AndroidPrinter.printEscPos === 'function') {
+                const printed = window.AndroidPrinter.printEscPos(payloadB64);
+                showToast(printed ? 'Ticket envoye a l imprimante' : 'Imprimante non connectee');
+                return;
+            }
+        }
+    } catch (e) {
+        showToast('Erreur impression Android');
+    }
+
     window.open("<?php echo e(route('caisse.imprimer')); ?>", "_blank");
 }
+
+const checkoutForm = document.getElementById('checkoutForm');
+let bypassValidatePrintIntercept = false;
+let validatePrintInProgress = false;
+
+checkoutForm.addEventListener('submit', async (e) => {
+    if (bypassValidatePrintIntercept) {
+        return;
+    }
+
+    const submitter = e.submitter;
+    const action = submitter?.value || '';
+
+    if (action !== 'validate_print') {
+        return;
+    }
+
+    e.preventDefault();
+    if (validatePrintInProgress) {
+        return;
+    }
+    validatePrintInProgress = true;
+
+    try {
+        await printDirectThermal();
+    } catch (_) {
+        // Keep sale validation flow even if printing fails.
+    }
+
+    bypassValidatePrintIntercept = true;
+    if (typeof checkoutForm.requestSubmit === 'function') {
+        checkoutForm.requestSubmit(submitter);
+    } else {
+        checkoutForm.submit();
+    }
+});
 
 const fullscreenBtn = document.getElementById('fullscreenBtn');
 fullscreenBtn.addEventListener('click', async () => {
@@ -1066,5 +1468,6 @@ document.addEventListener('fullscreenchange', () => {
 renderCart();
 </script>
 <?php $__env->stopSection(); ?>
+
 
 <?php echo $__env->make('layouts.app', \Illuminate\Support\Arr::except(get_defined_vars(), ['__data', '__path']))->render(); ?><?php /**PATH C:\Projets POS\Projets clients\systemphone\resources\views/caisse/index.blade.php ENDPATH**/ ?>

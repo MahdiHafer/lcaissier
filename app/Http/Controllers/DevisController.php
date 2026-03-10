@@ -32,7 +32,7 @@ class DevisController extends Controller
     public function create()
     {
         $clients = Client::orderBy('nom')->get();
-        $products = Product::orderBy('marque')->get();
+        $products = Product::where('quantite', '>', 0)->orderBy('marque')->get();
         return view('devis.create', compact('clients', 'products'));
     }
 
@@ -81,7 +81,13 @@ class DevisController extends Controller
     {
         $devis = $devi->load('details');
         $clients = Client::orderBy('nom')->get();
-        $products = Product::orderBy('marque')->get();
+        $existingProductIds = $devis->details->pluck('product_id')->filter()->unique()->values();
+        $products = Product::where(function ($q) use ($existingProductIds) {
+            $q->where('quantite', '>', 0);
+            if ($existingProductIds->isNotEmpty()) {
+                $q->orWhereIn('id', $existingProductIds);
+            }
+        })->orderBy('marque')->get();
 
         return view('devis.edit', compact('devis', 'clients', 'products'));
     }

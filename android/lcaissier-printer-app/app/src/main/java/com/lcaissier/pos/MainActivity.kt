@@ -9,7 +9,9 @@ import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.Bundle
+import android.text.InputType
 import android.util.Base64
+import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -18,24 +20,28 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.EditText
-import android.widget.ImageButton
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
-    private lateinit var settingsButton: ImageButton
+    private lateinit var secretSettingsTrigger: View
     private lateinit var usbManager: UsbManager
     private lateinit var printer: UsbEscPosPrinter
 
     private var pendingBytes: ByteArray? = null
+    private var immersiveEnabled: Boolean = true
 
     companion object {
         private const val ACTION_USB_PERMISSION = "com.lcaissier.pos.USB_PERMISSION"
         private const val PREFS_NAME = "lcaissier_prefs"
         private const val PREF_POS_URL = "pos_url"
+        private const val PREF_SETTINGS_PASSWORD = "settings_password"
     }
 
     private val usbPermissionReceiver = object : BroadcastReceiver() {
@@ -63,6 +69,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        enableImmersiveMode()
 
         usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
         printer = UsbEscPosPrinter(usbManager)
@@ -75,7 +82,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         webView = findViewById(R.id.posWebView)
-        settingsButton = findViewById(R.id.btnSettingsUrl)
+        secretSettingsTrigger = findViewById(R.id.secretSettingsTrigger)
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
         webView.settings.allowFileAccess = false
@@ -99,10 +106,18 @@ class MainActivity : AppCompatActivity() {
         }
 
         webView.addJavascriptInterface(AndroidPrinterBridge(), "AndroidPrinter")
-        settingsButton.setOnClickListener {
-            openUrlDialog()
+        secretSettingsTrigger.setOnLongClickListener {
+            askSettingsPassword()
+            true
         }
         webView.loadUrl(getPosUrl())
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && immersiveEnabled) {
+            enableImmersiveMode()
+        }
     }
 
     override fun onDestroy() {
@@ -159,6 +174,59 @@ class MainActivity : AppCompatActivity() {
         prefs.edit().putString(PREF_POS_URL, url).apply()
     }
 
+    private fun getSettingsPassword(): String {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val custom = prefs.getString(PREF_SETTINGS_PASSWORD, null)?.trim().orEmpty()
+        return if (custom.isNotEmpty()) custom else BuildConfig.SETTINGS_PASSWORD
+    }
+
+    private fun askSettingsPassword() {
+        val input = EditText(this).apply {
+            hint = "Mot de passe admin"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setSingleLine(true)
+            setPadding(36, 24, 36, 24)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Acces parametres")
+            .setMessage("Saisissez le mot de passe pour modifier l'URL du serveur.")
+            .setView(input)
+            .setNegativeButton("Annuler", null)
+            .setPositiveButton("Valider") { _, _ ->
+                val entered = input.text?.toString()?.trim().orEmpty()
+                if (entered != getSettingsPassword()) {
+                    toast("Mot de passe incorrect")
+                    return@setPositiveButton
+                }
+                openAdminMenu()
+            }
+            .show()
+    }
+
+    private fun openAdminMenu() {
+        val actions = mutableListOf("Parametres URL serveur")
+        actions += if (immersiveEnabled) "Sortir plein ecran" else "Activer plein ecran"
+
+        AlertDialog.Builder(this)
+            .setTitle("Menu admin")
+            .setItems(actions.toTypedArray()) { _, which ->
+                when (actions[which]) {
+                    "Parametres URL serveur" -> openUrlDialog()
+                    "Sortir plein ecran" -> {
+                        disableImmersiveMode()
+                        toast("Plein ecran desactive")
+                    }
+                    "Activer plein ecran" -> {
+                        enableImmersiveMode()
+                        toast("Plein ecran active")
+                    }
+                }
+            }
+            .setNegativeButton("Fermer", null)
+            .show()
+    }
+
     private fun openUrlDialog() {
         val input = EditText(this).apply {
             setText(getPosUrl())
@@ -205,6 +273,22 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun enableImmersiveMode() {
+        immersiveEnabled = true
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val controller = WindowInsetsControllerCompat(window, window.decorView)
+        controller.hide(WindowInsetsCompat.Type.systemBars())
+        controller.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+    }
+
+    private fun disableImmersiveMode() {
+        immersiveEnabled = false
+        WindowCompat.setDecorFitsSystemWindows(window, true)
+        val controller = WindowInsetsControllerCompat(window, window.decorView)
+        controller.show(WindowInsetsCompat.Type.systemBars())
     }
 
     data class PrintAttempt(
